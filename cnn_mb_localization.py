@@ -18,8 +18,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import random
 import time
+from sklearn.metrics import root_mean_squared_error, accuracy_score
 
- 
+
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 import tensorflow as tf
@@ -326,7 +327,7 @@ save_folder = dir_path + r'\results\test_simu_1bulle\cnn_prediction\IQ_mb_no_noi
 save_subfolder1 = r'\sizeConv2D_{}'.format(sizeConv2D)+'_{}'.format(sizeConv2D)
 save_subfolder2 = r'\runGPU_{}'.format(runOnGPU)
 save_subfolder3 = r'\cross_val_{}'.format(crossVal) + '_{}'.format(nKFold) 
-save_subfolder4 = r'\epoch_{}'.format(Epoch)
+save_subfolder4 = r'\epoch_{}'.format(Epoch) + '_checkRMSE_3'
 # save_subfolder5 = r'\nKFold_{}'.format(nKFold)
 # save_subfolder5 = r'\dropout_afterSecondMaxPooling'
 
@@ -370,6 +371,8 @@ kf = KFold(n_splits=k, shuffle=True)
 # Lists to store the results
 all_fold_val_scores = []
 all_fold_train_histories = []
+all_fold_rmse = []
+all_fold_y_pred_coord = []
 
 start_time = time.time()
 # Perform K-fold cross-validation
@@ -383,13 +386,26 @@ for train_index, val_index in kf.split(IQ_train):
     # print(history.history['loss'])
     # print(history.history['loss'])
    
-
     # Evaluate the model on the validation data
     val_scores = model.evaluate(xVal, yVal, verbose=1)
     all_fold_val_scores.append(val_scores)
+    
+    
+    # test and performance 
+    y_pred_coord = model.predict(xTest[:,:,:].reshape(len(xTest), img_depth, img_width, 1))
+    all_fold_y_pred_coord.append(y_pred_coord)
+    # error in prediction --> root mean square error (RMSE)
+    # yTest = our y_true 
+    RMSE_pred  = np.sqrt(np.mean((yTest[:,:] - y_pred_coord[:,:])**2))
+    RMSE_pred_x  = np.sqrt(np.mean((yTest[:,0] - y_pred_coord[:,0])**2))
+    RMSE_pred_z  = np.sqrt(np.mean((yTest[:,1] - y_pred_coord[:,1])**2))
+    RMSE = [RMSE_pred, RMSE_pred_x, RMSE_pred_z]
+    all_fold_rmse.append(RMSE)
+    
 
     # Save the training history for further analysis (optional)
     all_fold_train_histories.append(history.history)
+    
 end_time = time.time()
 model.summary()
 
@@ -411,14 +427,12 @@ ax.set_xlabel('Epoch')
 ax.legend()
 
 #%%
-
 ### PREDICTION ###
 
-        
-idx_test = random.randint(0, xTest.shape[0])
-IQ_mb_test = xTest[idx_test,:,:]
-true_coord = yTest[idx_test,:]
-# # x_test = IQ_mb_test/np.max(IQ_mb_test) #normalization of IQ_mb_test
+## check 1 prediction
+# idx_test = random.randint(0, xTest.shape[0])
+# IQ_mb_test = xTest[idx_test,:,:]
+# true_coord = yTest[idx_test,:]
 
 # predicted_coordinates = model.predict(IQ_mb_test.reshape(1, img_depth, img_width, 1))
 # fig, ax = plt.subplots()
@@ -435,31 +449,28 @@ true_coord = yTest[idx_test,:]
 # ax.show()
 
 
-# test and performance 
-y_pred_coord = model.predict(xTest[:,:,:].reshape(len(xTest), img_depth, img_width, 1))
-# error in prediction --> root mean square error (RMSE)
-# yTest = our y_true 
-
-#calculate elapsed time of the model 
+#%%
+# Calculate elapsed time of the model 
 elapsed_time = (end_time - start_time)/60 #elapsed time of model (min)
-# Calculate the average validation scores
+
+## Calculate mean and standard deviation
+# validation scores
 avg_val_score = np.mean(all_fold_val_scores, axis=0)
-RMSE_pred  = np.sqrt(np.mean((yTest[:,:] - y_pred_coord[:,:])**2))
-RMSE_pred_z  = np.sqrt(np.mean((yTest[:,1] - y_pred_coord[:,1])**2))
-RMSE_pred_x  = np.sqrt(np.mean((yTest[:,0] - y_pred_coord[:,0])**2))
-pixel_size = (dx+dz)/2
+std_val_score = np.std(all_fold_val_scores, axis=0)
+# rmse 
+avg_rmse = np.mean(all_fold_rmse, axis=0)
+std_rmse = np.std(all_fold_rmse, axis=0)
 
-
-mean_dist_true_pred = np.sqrt(np.mean((yTest[:,0] - y_pred_coord[:,0])**2 + (yTest[:,1] - y_pred_coord[:,1])**2))
 
 print(f"Elapsed time for training: {elapsed_time:.2f} min")
-
-print(f'Average validation scores over {k} folds: {avg_val_score}')
-
+pixel_size = (dx+dz)/2
 print('Pixel size = ',  "{:.3f}".format(pixel_size), 'mm') 
-print('RMSE between true position and predicted position of MBs = ', "{:.3f}".format(RMSE_pred), 'mm')
-print('RMSE over x between true position and predicted position of MBs = ', "{:.3f}".format(RMSE_pred_x), 'mm')
-print('RMSE over z between true position and predicted position of MBs = ', "{:.3f}".format(RMSE_pred_z), 'mm')
+print(f'[mean, std] over {k} folds:')
+print(f' -> validation scores = [{avg_val_score[:2]}, {std_val_score[:2]}]')
+print(' -> RMSE between true position and predicted position of MBs = ', "[{:.3f}, ".format(avg_rmse[0]), "{:.3f}]".format(std_rmse[0]), 'mm')
+print(' -> RMSE over x between true position and predicted position of MBs = ', "[{:.3f}, ".format(avg_rmse[1]), "{:.3f}]".format(std_rmse[1]), 'mm')
+print(' -> RMSE over z between true position and predicted position of MBs = ', "[{:.3f}, ".format(avg_rmse[2]), "{:.3f}]".format(std_rmse[2]), 'mm')
+#%%
 # plt.figure()
 # n = 1
 # plt.scatter(yTest[n,1], yTest[n,0])
@@ -472,7 +483,7 @@ print('RMSE over z between true position and predicted position of MBs = ', "{:.
 # print(dist_test)
 # dist_true_predict = np.sqrt((yTest[:,1] - y_pred_coord[:,1])**2 + (yTest[:,0] - y_pred_coord[:,0])**2)
 
-y_pred_coord = model.predict(xTest[:,:,:].reshape(len(xTest), img_depth, img_width, 1))
+# y_pred_coord = model.predict(xTest[:,:,:].reshape(len(xTest), img_depth, img_width, 1))
 
 # np.histogram()
 # distribution x coord
@@ -632,9 +643,8 @@ if save_model == 1:
           
           'xTrain': xTrain,
           'yTrain': yTrain,
-          'xVal': dist_true_pred,
+          'xVal': xVal,
           'yVal': yVal,
-                    
           'BfStruct': BfStruct,
           'dataset_path': load_path
           }, create_subfolder + r'\training_dataset.joblib')
@@ -663,16 +673,26 @@ if save_model == 1:
           'all_fold_train_histories': all_fold_train_histories, 
           'all_fold_val_scores': all_fold_val_scores,
           'avg_val_score': avg_val_score,
-          'abs_dist_true_pred': dist_true_pred, 
-          'dist_x_true_pred': dist_x_true_pred,
-          'dist_z_true_pred': dist_z_true_pred,
+          'std_val_score': std_val_score,
+          'all_fold_y_pred_coord': all_fold_y_pred_coord,
           'pixel_size': pixel_size,
-          'global_RMSE_pred': RMSE_pred,
-          'x_RMSE_pred': RMSE_pred_x,
-          'z_RMSE_pred': RMSE_pred_z
+          'all_fold_rmse': all_fold_rmse,
+          'avg_rmse_pred': avg_rmse,
+          'std_rmse_pred': std_rmse,
+          # 'abs_dist_true_pred': dist_true_pred, 
+          # 'dist_x_true_pred': dist_x_true_pred,
+          # 'dist_z_true_pred': dist_z_true_pred,
+          # 'global_RMSE_pred': RMSE_pred,
+          # 'x_RMSE_pred': RMSE_pred_x,
+          # 'z_RMSE_pred': RMSE_pred_z
           }, create_subfolder + r'\training_and_evaluation_results.joblib')
 elif save_model == 0:
     print('no saving model')
+    
+    
+    # for future plot : 
+    #dist_x_true_pred = yTest[:,0] - all_fold_y_pred_coord[:,0]
+    #dist_z_true_pred = yTest[:,1] - all_fold_y_pred_coord[:,1]
 
 #%% load figs
 load_fig = 0
@@ -688,9 +708,12 @@ if load_fig == 1:
     figure.show()
 elif load_fig == 0:
     print('no need to load figures')
+
     
 #%% load data
+import numpy as np
 from joblib import dump, load
+from sklearn.metrics import root_mean_squared_error, accuracy_score
 import tensorflow as tf
 reload_data = 0
 if reload_data == 1:
@@ -701,12 +724,24 @@ if reload_data == 1:
     param_model = load(load_result_path + r'\model_param.joblib')
     # gpuState = param_model['runOnGPU']
     # nKFold = param_model['nKFold']
-    # eval_result = load(load_result_path + r'\training_and_evaluation_results.joblib')
+    eval_result = load(load_result_path + r'\training_and_evaluation_results.joblib')
     # elaps_time = eval_result['elapsed_time']
 elif reload_data == 0:
     print('no reload data')
 # eval_result['cross_val_name']
 # print(test_a)
 # test_b = datatest['b']
+    
+# # dist_x_true_pred = yTest[:,0] - y_pred_coord[:,0]
+# # dist_z_true_pred = yTest[:,1] - y_pred_coord[:,1]
+
+# # dist_true_pred = np.sqrt(dist_x_true_pred**2 + dist_z_true_pred**2)
+# # dist_true_pred_test = np.mean(dist_true_pred)
+
+# check_x = eval_result['dist_x_true_pred']
+# check_z = eval_result['dist_z_true_pred']
+# check_dist = eval_result['dist_true_pred']
+
+# root_mean_squared_error(check_x,check_z)
 #%%
 # load_model = tf.keras.models.load_model(create_subfolder + r'\model.keras')
