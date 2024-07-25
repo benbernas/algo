@@ -40,7 +40,7 @@ import pickle
 
 #%% define pre-param
 
-dir_path = r'D:\Benoit\machine_learning\python\deep_learning'
+dir_path = r'C:\Benoit\deep_learning'
 os.chdir(dir_path)
 
 load_data = 1
@@ -62,21 +62,50 @@ def check_environment():
 
     if is_python_310 and is_myenv:
         if num_gpus > 0:
-            print("Running on Python 3.10 in 'myenv' with GPU support.")
-            print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+            python = sys.version[:7]
+            tensorFlow = tf.__version__
+            cuda = 11.2
+            cuDNN = 8.1
             run_GPU = 1
-        else:
-            print("Running on Python 3.10 in 'myenv' without GPU support.")
+            print(f"Running on Python {python} in 'myenv' Anaconda environment with GPU support.")
+            print(f"TensorFlow version: {tensorFlow}")
+            print(f"CUDA version: {cuda}")
+            print(f"cuDNN version: {cuDNN}")
             print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+            
+
+        else:
+            python = 3.10
+            tensorFlow = tf.__version__
+            cuda = 'not running on GPU'
+            cuDNN = cuda
             run_GPU = 0
+            print(f"Running on Python {python} in 'myenv' Anaconda environment without GPU support.")
+            print(f"TensorFlow version: {tensorFlow}")
+            print(f"CUDA version: {cuda}")
+            print(f"cuDNN version: {cuDNN}")
+            print("Num GPUs Available:", len(tf.config.list_physical_devices('GPU')))
+            
+
+            
     else:
-        print("Not running on Python 3.10 in 'myenv'. Not using the GPU.")
-        print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+        python = sys.version[:7]
+        tensorFlow = tf.__version__
+        cuda = 'not running on GPU'
+        cuDNN = cuda
         run_GPU = 0
-    return run_GPU
+        print(f"Running on Python {python}, not in 'myenv' Anaconda environment. Not using the GPU.")
+        print(f"TensorFlow version: {tensorFlow}")
+        print(f"CUDA version: {cuda}")
+        print(f"cuDNN version: {cuDNN}")
+        print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+        
+    
+        
+    return run_GPU, python, tensorFlow, cuda, cuDNN 
 
 #check run on GPU or not 
-runOnGPU = bool(check_environment())
+infoSys = check_environment()
 # print(runOnGPU) 
 #%%
 # if run_GPU == 1:
@@ -234,7 +263,7 @@ elif load_data == 1 :
     load_path = dir_path + r'\algo\generate_database\database\database_complex_IQ_mb_noised_correction.h5'
     os.makedirs(os.path.dirname(load_path), exist_ok=True)
     
-    simu_path = r'D:\Benoit\Simu\test_clean_simu\my_simu\correction\2024-06-26_10blocks_1scats_no_noise'
+    simu_path = r'C:\Benoit\deep_learning\field_simu\2024-06-26_10blocks_1scats_no_noise'
     BfStruct = scipy.io.loadmat(os.path.join(simu_path, 'BfStruct.mat'))['BfStruct']
 
     # BfStruct = BfStruct['BfStruct']
@@ -317,17 +346,17 @@ dropoutValue = 0.5
 activationDenseLayer = 'sigmoid'
 Loss = 'mse'
 Optimizer = 'Adam'
-Epoch = 100 
+Epoch = 10 
 learningRate = 1e-3
 batchSize = 20
 crossVal = 'KFold'
 nKFold = 2
 
 save_folder = dir_path + r'\results\test_simu_1bulle\cnn_prediction\IQ_mb_no_noise\adding_gaussian_noise_5_per_correction'
-save_subfolder1 = r'\sizeConv2D_{}'.format(sizeConv2D)+'_{}'.format(sizeConv2D)
-save_subfolder2 = r'\runGPU_{}'.format(runOnGPU)
+save_subfolder1 = r'\quickTest\sizeConv2D_{}'.format(sizeConv2D)+'_{}'.format(sizeConv2D)
+save_subfolder2 = r'\runGPU_{}'.format(bool(infoSys[0]))
 save_subfolder3 = r'\cross_val_{}'.format(crossVal) + '_{}'.format(nKFold) 
-save_subfolder4 = r'\epoch_{}'.format(Epoch) + '_checkRMSE_3'
+save_subfolder4 = r'\epoch_{}'.format(Epoch)
 # save_subfolder5 = r'\nKFold_{}'.format(nKFold)
 # save_subfolder5 = r'\dropout_afterSecondMaxPooling'
 
@@ -652,8 +681,7 @@ if save_model == 1:
     model.save(create_subfolder + r'\model.keras')
     
     
-    dump({'runOnGPU': runOnGPU,
-          'img_depth': img_depth,
+    dump({'img_depth': img_depth,
           'img_width': img_width,
           'sizeConv2D': sizeConv2D,
           'activationConv2D': activationConv2D,
@@ -666,7 +694,12 @@ if save_model == 1:
           'Optimizer': Optimizer,
           'learningRate': learningRate,
           'crossVal': crossVal,
-          'nKFold': nKFold
+          'nKFold': nKFold,
+          'runOnGPU': bool(infoSys[0]),
+          'python': infoSys[1],
+          'TensorFlow': infoSys[2],
+          'cuda': infoSys[3],
+          'cuDNN': infoSys[4]
           }, create_subfolder + r'\model_param.joblib')
     
     dump({'elapsed_time': elapsed_time,
