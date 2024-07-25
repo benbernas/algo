@@ -400,8 +400,12 @@ kf = KFold(n_splits=k, shuffle=True)
 # Lists to store the results
 all_fold_val_scores = []
 all_fold_train_histories = []
-all_fold_rmse = []
 all_fold_y_pred_coord = []
+all_fold_dist_x_true_pred = []
+all_fold_dist_z_true_pred = []
+all_fold_abs_dist_true_pred = []
+all_fold_rmse = []
+
 
 start_time = time.time()
 # Perform K-fold cross-validation
@@ -423,6 +427,17 @@ for train_index, val_index in kf.split(IQ_train):
     # test and performance 
     y_pred_coord = model.predict(xTest[:,:,:].reshape(len(xTest), img_depth, img_width, 1))
     all_fold_y_pred_coord.append(y_pred_coord)
+    
+    #calculate the distance [x,z] between true and predicted coordinates
+    dist_x_true_pred = yTest[:,0] - y_pred_coord[:,0]
+    dist_z_true_pred = yTest[:,1] - y_pred_coord[:,1]
+    abs_dist_true_pred = np.sqrt(dist_x_true_pred**2 + dist_z_true_pred**2)
+    
+    all_fold_dist_x_true_pred.append(dist_x_true_pred)
+    all_fold_dist_z_true_pred.append(dist_z_true_pred)
+    all_fold_abs_dist_true_pred.append(abs_dist_true_pred)
+
+    
     # error in prediction --> root mean square error (RMSE)
     # yTest = our y_true 
     RMSE_pred  = np.sqrt(np.mean((yTest[:,:] - y_pred_coord[:,:])**2))
@@ -708,16 +723,13 @@ if save_model == 1:
           'avg_val_score': avg_val_score,
           'std_val_score': std_val_score,
           'all_fold_y_pred_coord': all_fold_y_pred_coord,
+          'all_fold_dist_x_true_pred': all_fold_dist_x_true_pred,
+          'all_fold_dist_z_true_pred':all_fold_dist_z_true_pred,
+          'all_fold_abs_dist_true_pred':all_fold_abs_dist_true_pred,
           'pixel_size': pixel_size,
           'all_fold_rmse': all_fold_rmse,
           'avg_rmse_pred': avg_rmse,
           'std_rmse_pred': std_rmse,
-          # 'abs_dist_true_pred': dist_true_pred, 
-          # 'dist_x_true_pred': dist_x_true_pred,
-          # 'dist_z_true_pred': dist_z_true_pred,
-          # 'global_RMSE_pred': RMSE_pred,
-          # 'x_RMSE_pred': RMSE_pred_x,
-          # 'z_RMSE_pred': RMSE_pred_z
           }, create_subfolder + r'\training_and_evaluation_results.joblib')
 elif save_model == 0:
     print('no saving model')
