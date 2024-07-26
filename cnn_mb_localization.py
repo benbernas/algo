@@ -29,14 +29,6 @@ from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn.metrics import root_mean_squared_error, accuracy_score
 
 import pickle
-#%%
-# import os
-# os.environ['CUDA_HOME'] = 'C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.2'
-# os.environ['PATH'] += os.pathsep + os.path.join(os.environ['CUDA_HOME'], 'bin')
-# os.environ['LD_LIBRARY_PATH'] = os.path.join(os.environ['CUDA_HOME'], 'lib\x64')
-
-# import tensorflow as tf
-# print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 #%% define pre-param
 
@@ -107,187 +99,37 @@ def check_environment():
 #check run on GPU or not 
 infoSys = check_environment()
 # print(runOnGPU) 
-#%%
-# if run_GPU == 1:
-#     print('run on GPU')
-#     print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+#%% load database
     
-#     gpus = tf.config.experimental.list_physical_devices('GPU')
-#     if gpus:
-#         try:
-#             for gpu in gpus:
-#                 tf.config.experimental.set_memory_growth(gpu, True)
-#         except RuntimeError as e:
-#             print(e)
-    
-#     # Ensure GPU memory growth is set
-#     gpus = tf.config.experimental.list_physical_devices('GPU')
-#     if gpus:
-#         try:
-#             for gpu in gpus:
-#                 tf.config.experimental.set_memory_growth(gpu, True)
-#         except RuntimeError as e:
-#             print(e)
-# elif run_GPU == 0:
-#     print('run on CPU')
-#%%
-if load_data == 0:
-    run_dir = os.getcwd()
-    nblock = 6
-    # Path to the folder containing MATLAB files
-    simu_path = r"D:\Benoit\Simu\test_clean_simu\my_simu\correction\2024-02-28_10blocks_1scats"
-    #### Load data ####
-    IQ_mb = np.empty([91, 128, 400, nblock])
-    # IQ_mb = np.empty([91, 128, 400, 5])
-    for iblock in np.linspace(1, nblock, nblock, dtype = int):
-        folder_path = r"D:\Benoit\Simu\test_clean_simu\my_simu\correction\2024-02-28_10blocks_1scats\data_simu\Block_{}".format(iblock)
-        # List all files in the folder
-        main_files = os.listdir(simu_path)
-        file_list = os.listdir(folder_path)
-        for file in file_list:
-            if file == 'IQ_Bulles.mat':
-                file_idx = file_list.index(file)
-                IQ_mb[:,:,:,iblock-1] = scipy.io.loadmat(os.path.join(folder_path, file_list[file_idx]))[file[:-4]]
-            # e lif  file == [simu_path + '\Scatterers.mat']:
-            #     file_idx = file_list.index(file)
-            #     raw_mb[:,:,:] = scipy.io.loadmat(os.path.join(folder_path, file_list[file_idx]))[file[:-4]]
-                
-                # IQ_mb_tot[:,:,:,iblock] = IQ_mb[:,:,:]
-        
-    
-    # BfStruct = scipy.io.loadmat(r"D:\Benoit\Simu\test_clean_simu\my_simu\correction\2024-02-28_10blocks_1scats\data_simu\BfStruct.mat")['BfStruct']
-    BfStruct = scipy.io.loadmat(os.path.join(simu_path, 'BfStruct.mat'))['BfStruct']
-    
-    # BfStruct = BfStruct['BfStruct']
-    xExtent = float(BfStruct['x0']), float(BfStruct['x1']); # equivaut to [- (number of probe elements)/2 , +(number of probe elements)/2] * pitch
-    zExtent = float(BfStruct['z0']), float(BfStruct['z1']);
-    dz = float(BfStruct['dz']);
-    dx = float(BfStruct['dx']);
-    nframes = float(BfStruct['nframes']);
-    
-    
-    
-    raw_IQ_mb = np.reshape(IQ_mb, [91, 128, int(nframes)*nblock], order ='F')
-    
-    raw_mb = scipy.io.loadmat(simu_path + '\Scatterers.mat')['Scatterers']
-    simu_mb_x = raw_mb[:,0,:raw_IQ_mb.shape[2]]
-    simu_mb_z = raw_mb[:,1,:raw_IQ_mb.shape[2]]
-    simu_mb_coord = raw_mb[0,:2,:raw_IQ_mb.shape[2]].T
-      
-    
-    
-    
-    #### PREPROCESSING #####
-    ## normalization
-    
-    def normalize_IQframes(frames):
-        # norm_IQ = np.empty(frames.shape)
-        # for i in range(frames.shape[2]):
-        im_IQ = abs(frames[:,:,:])
-        max_IQ = np.max(im_IQ)
-        # norm_IQ[:,:,i] =  im_IQ / max_IQ
-        norm_IQ =  im_IQ / max_IQ
-        return norm_IQ
-        
-       
-    # norm_IQ_mb = abs(raw_IQ_mb / np.max(raw_IQ_mb))
-    # print(np.max(norm_IQ_mb))
-    norm_IQ_mb = normalize_IQframes(raw_IQ_mb)
-    print(np.max(norm_IQ_mb[:,:,200]))
-    
-    # transposed normalized IQ --> this is necessary because numpy's shuffle operates on the first axis
-    # and needed later for learning
-    norm_IQ_mb_transposed = np.transpose(norm_IQ_mb, axes=(2, 0, 1))
-    ## shuffle
-    # Generate a permutation of indices to shuffle
-    idx_shuffle = np.random.permutation((norm_IQ_mb_transposed.shape[0])) 
-    IQ_mb_shuffle = norm_IQ_mb_transposed[idx_shuffle,:,:]
-    simu_mb_coord_shuffle = simu_mb_coord[idx_shuffle,:]
-    # test = np.random.shuffle(norm_IQ_mb_transposed)
-    ## Check the random shuffle 
-    # plt.imshow(norm_IQ_mb[:,:,0])
-    # plt.imshow(norm_IQ_mb_transposed[10,:,:])
-    
-    ## split dataset into train set and test set
-    train_prop = 0.8
-    IQ_train = IQ_mb_shuffle[:int(raw_IQ_mb.shape[2]*train_prop),:,:]
-    IQ_test = IQ_mb_shuffle[int(raw_IQ_mb.shape[2]*train_prop):,:,:]
-    
-    coord_train = simu_mb_coord_shuffle[:int(raw_IQ_mb.shape[2]*train_prop),:]
-    coord_test = simu_mb_coord_shuffle[int(raw_IQ_mb.shape[2]*train_prop):,:]
-    
-    xTrain = IQ_train[:int(IQ_train.shape[0]*train_prop),:,:]
-    xVal = IQ_train[int(IQ_train.shape[0]*train_prop):,:,:]
-    
-    # define size image
-    img_depth = raw_IQ_mb.shape[0]
-    img_width = raw_IQ_mb.shape[1]
-    
-    # define class 
-    
-    ### define class train (y_train) --> [z, x] coordinates
-    
-    # yTrain = class_coord[:int(IQ_train.shape[0]*train_prop),:]
-    # yVal = class_coord[int(IQ_train.shape[0]*train_prop):,:]
-    yTrain = coord_train[:int(IQ_train.shape[0]*train_prop),:]
-    yVal = coord_train[int(IQ_train.shape[0]*train_prop):,:]
-    
-    # define instance and class test (our y_true)
-    xTest = IQ_test
-    yTest = coord_test
-    
-    #save data 
-    if save_dataset == 1:
-        
-    # database  = [xTrain]
-        save_path = r'D:\Benoit\machine_learning\python\deep_learning\test_simu_1bulle\optimization\database_LNRF_1_36.h5'
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        
-        # Save the data using h5py
-        with h5py.File(save_path, 'w') as file:
-            file.create_dataset("xTrain", data=xTrain)
-            file.create_dataset("yTrain", data=yTrain)
-            file.create_dataset("xTest", data=xTest)
-            file.create_dataset("yTest", data=yTest)  
-            file.create_dataset("xVal", data=xVal)
-            file.create_dataset("yVal", data=yVal)  
-        
-        print(f"Data has been saved to {save_path}")
-    elif save_dataset == 0:
-        print("database already save")
+# D:\Benoit\machine_learning\python\deep_learning\algo\generate_database\database
+load_path = dir_path + r'\algo\generate_database\database\database_complex_IQ_mb_noised_correction.h5'
+os.makedirs(os.path.dirname(load_path), exist_ok=True)
 
-    
-elif load_data == 1 :
-    #load database
-    # D:\Benoit\machine_learning\python\deep_learning\algo\generate_database\database
-    load_path = dir_path + r'\algo\generate_database\database\database_complex_IQ_mb_noised_correction.h5'
-    os.makedirs(os.path.dirname(load_path), exist_ok=True)
-    
-    simu_path = r'C:\Benoit\deep_learning\field_simu\2024-06-26_10blocks_1scats_no_noise'
-    BfStruct = scipy.io.loadmat(os.path.join(simu_path, 'BfStruct.mat'))['BfStruct']
+simu_path = r'C:\Benoit\deep_learning\field_simu\2024-06-26_10blocks_1scats_no_noise'
+BfStruct = scipy.io.loadmat(os.path.join(simu_path, 'BfStruct.mat'))['BfStruct']
 
-    # BfStruct = BfStruct['BfStruct']
-    xExtent = float(BfStruct['x0']), float(BfStruct['x1']); # equivaut to [- (number of probe elements)/2 , +(number of probe elements)/2] * pitch
-    zExtent = float(BfStruct['z0']), float(BfStruct['z1']);
-    dz = float(BfStruct['dz']);
-    dx = float(BfStruct['dx']);
-    nframes = float(BfStruct['nframes']);
-        
-    with h5py.File(load_path, 'r') as file:
-        norm_IQ_mb_noised = file["norm_IQ_mb_noised"][:,:,:]
-        mb_coord = file["simu_mb_coord"][:,:]
-        IQ_train = file["IQ_train"][:,:,:]
-        coord_train = file["coord_train"][:,:]
-        # xTrain = file["xTrain"][:,:,:]
-        # yTrain = file["yTrain"][:,:]
-        xTest = file["xTest"][:,:,:]
-        yTest = file["yTest"][:,:]
-        # xVal = file["xVal"][:,:,:]
-        # yVal = file["yVal"][:,:]
+# BfStruct = BfStruct['BfStruct']
+xExtent = float(BfStruct['x0']), float(BfStruct['x1']); # equivaut to [- (number of probe elements)/2 , +(number of probe elements)/2] * pitch
+zExtent = float(BfStruct['z0']), float(BfStruct['z1']);
+dz = float(BfStruct['dz']);
+dx = float(BfStruct['dx']);
+nframes = float(BfStruct['nframes']);
+    
+with h5py.File(load_path, 'r') as file:
+    norm_IQ_mb_noised = file["norm_IQ_mb_noised"][:,:,:]
+    mb_coord = file["simu_mb_coord"][:,:]
+    IQ_train = file["IQ_train"][:,:,:]
+    coord_train = file["coord_train"][:,:]
+    # xTrain = file["xTrain"][:,:,:]
+    # yTrain = file["yTrain"][:,:]
+    xTest = file["xTest"][:,:,:]
+    yTest = file["yTest"][:,:]
+    # xVal = file["xVal"][:,:,:]
+    # yVal = file["yVal"][:,:]
 
 
 #%%  check xTrain and yTrain
-
+# faire fonction check xTrain yTrain
 # plt.figure()   
 # # for ii in range(1):     
 # for ii in range(200):
@@ -316,14 +158,7 @@ elif load_data == 1 :
 #     plt.pause(0.1)
 #     plt.show()
        
-
-#%%
-    
-
-
-# xTest = IQ_test
-# # define class test (our y_true)
-# yTest = np.empty([IQ_test.shape[0], 2])
+#%% Show database
 
 print('Shape of X database = ', norm_IQ_mb_noised.shape)
 print('Shape of Y database = ', mb_coord.shape)
@@ -472,7 +307,7 @@ ax.legend()
 
 #%%
 ### PREDICTION ###
-
+# faire fonction check prediction
 ## check 1 prediction
 # idx_test = random.randint(0, xTest.shape[0])
 # IQ_mb_test = xTest[idx_test,:,:]
@@ -493,7 +328,7 @@ ax.legend()
 # ax.show()
 
 
-#%%
+#%% show results
 # Calculate elapsed time of the model 
 elapsed_time = (end_time - start_time)/60 #elapsed time of model (min)
 
@@ -514,22 +349,8 @@ print(f' -> validation scores = [{avg_val_score[:2]}, {std_val_score[:2]}]')
 print(' -> RMSE between true position and predicted position of MBs = ', "[{:.3f}, ".format(avg_rmse[0]), "{:.3f}]".format(std_rmse[0]), 'mm')
 print(' -> RMSE over x between true position and predicted position of MBs = ', "[{:.3f}, ".format(avg_rmse[1]), "{:.3f}]".format(std_rmse[1]), 'mm')
 print(' -> RMSE over z between true position and predicted position of MBs = ', "[{:.3f}, ".format(avg_rmse[2]), "{:.3f}]".format(std_rmse[2]), 'mm')
-#%%
-# plt.figure()
-# n = 1
-# plt.scatter(yTest[n,1], yTest[n,0])
-# plt.scatter(y_pred_coord[n,1], y_pred_coord[n,0], color ='red')
-# error_pred2  = np.sqrt(np.mean((yTest[n,:] - y_pred_coord[n,:])**2))
+#%% Show figs
 
-
-# dist_test = np.sqrt((yTest[n,1] - y_pred_coord[n,1])**2 + (yTest[n,0] - y_pred_coord[n,0])**2)
-# print(error_pred2)
-# print(dist_test)
-# dist_true_predict = np.sqrt((yTest[:,1] - y_pred_coord[:,1])**2 + (yTest[:,0] - y_pred_coord[:,0])**2)
-
-# y_pred_coord = model.predict(xTest[:,:,:].reshape(len(xTest), img_depth, img_width, 1))
-
-# np.histogram()
 # distribution x coord
 fig3 = plt.figure()
 plt.hist(yTrain[:,0], bins=int((np.max(yTrain[:,0]) - np.min(yTrain[:,0]))*10), color='blue', edgecolor='black', label = 'x coordinates of trained images')
@@ -554,9 +375,6 @@ z_bins = len(np.arange(np.min(yTest[:,1]), np.max(yTest[:,1])+2*lambda_radius, l
 
 counts_x, bins_coord_x = np.histogram(yTest[:,0], bins= x_bins)
 counts_z, bins_coord_z = np.histogram(yTest[:,1], bins= z_bins)
-
-# counts_x_pred, bins_coord_x_pred = np.histogram(y_pred_coord[:,0], bins= x_bins)
-# counts_z_pred, bins_coord_z_pred = np.histogram(y_pred_coord[:,1], bins= z_bins)
 
 #plot histogram between x true coordinates and x predicted coordinates
 fig5 = plt.figure()
@@ -587,25 +405,19 @@ dist_true_pred_test = np.mean(dist_true_pred)
 
 fig7 = plt.figure()
 plt.hist(dist_x_true_pred, bins=x_bins, color='orange', edgecolor='black', alpha = 0.5, label = 'distance between x true and x predicted coordinates')
-# plt.hist(dist_z_true_pred, bins=z_bins, color='blue', edgecolor='black', alpha = 0.5, label = 'distance between z true and z predicted coordinates')
-# plt.hist(y_pred_coord[:,1], bins=z_bins, color='red', edgecolor='black', alpha = 0.5, label = 'z predicted coordinates')
 plt.legend(loc='upper right')
 plt.xlabel('distance x (mm)')
 plt.ylabel('Nx distances')
 
 fig8 = plt.figure()
-# plt.hist(dist_x_true_pred, bins=x_bins, color='orange', edgecolor='black', alpha = 0.5, label = 'distance between x true and x predicted coordinates')
 plt.hist(dist_z_true_pred, bins=x_bins, color='blue', edgecolor='black', alpha = 0.5, label = 'distance between z true and z predicted coordinates')
-# plt.hist(y_pred_coord[:,1], bins=z_bins, color='red', edgecolor='black', alpha = 0.5, label = 'z predicted coordinates')
 plt.legend(loc='upper right')
 plt.xlabel('distance z (mm)')
 plt.ylabel('Nz distances')
 
 
 fig9 = plt.figure()
-# plt.hist(dist_x_true_pred, bins=x_bins, color='orange', edgecolor='black', alpha = 0.5, label = 'distance between x true and x predicted coordinates')
 plt.hist(dist_true_pred, bins=x_bins, color='red', edgecolor='black', alpha = 0.5, label = 'distance between true coordinates and predicted coordinates')
-# plt.hist(y_pred_coord[:,1], bins=z_bins, color='red', edgecolor='black', alpha = 0.5, label = 'z predicted coordinates')
 plt.legend(loc='upper right')
 plt.xlabel('distance (mm)')
 plt.ylabel('Nzx distances')
@@ -613,11 +425,6 @@ plt.ylabel('Nzx distances')
 #%% save figs 
 if save_fig == 1:
     
-    # import pickle
-    # savefig_folder = r'D:\Benoit\machine_learning\python\deep_learning\test_simu_1bulle\cnn_prediction\one_IQ_mb_noised\test_cross_validation\KFold'
-    # # savefig_subfolder = r'\1MB_IQ_activation_sigmoid_frames_2400_epoch_200_batch_size_20_learning_rate_1e-3_dropout_0.5_after_second_maxpooling'
-    # savefig_subfolder = r'\sizeConv2D_{}'.format(sizeConv2D)+'_{}'.format(sizeConv2D)
-
     savefig_path = r'\fig'
     create_figSubfolder = os.path.join(create_subfolder + savefig_path)
     # Create the subfolder
@@ -773,20 +580,6 @@ if reload_data == 1:
     # elaps_time = eval_result['elapsed_time']
 elif reload_data == 0:
     print('no reload data')
-# eval_result['cross_val_name']
-# print(test_a)
-# test_b = datatest['b']
-    
-# # dist_x_true_pred = yTest[:,0] - y_pred_coord[:,0]
-# # dist_z_true_pred = yTest[:,1] - y_pred_coord[:,1]
 
-# # dist_true_pred = np.sqrt(dist_x_true_pred**2 + dist_z_true_pred**2)
-# # dist_true_pred_test = np.mean(dist_true_pred)
-
-# check_x = eval_result['dist_x_true_pred']
-# check_z = eval_result['dist_z_true_pred']
-# check_dist = eval_result['dist_true_pred']
-
-# root_mean_squared_error(check_x,check_z)
-#%%
+#%% load model
 # load_model = tf.keras.models.load_model(create_subfolder + r'\model.keras')
