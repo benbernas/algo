@@ -32,11 +32,9 @@ import pickle
 
 #%% define pre-param
 
-dir_path = r'C:\Benoit\deep_learning'
+dir_path = r'D:\Benoit\machine_learning\python\deep_learning'
 os.chdir(dir_path)
-
-load_data = 1
-save_dataset = 0
+simu_path = dir_path + r'\field_simu\2024-06-26_10blocks_1scats_no_noise'
 save_fig = 1
 
 #%% check if you are running the code on GPU or running on CPU
@@ -104,8 +102,6 @@ infoSys = check_environment()
 # D:\Benoit\machine_learning\python\deep_learning\algo\generate_database\database
 load_path = dir_path + r'\algo\generate_database\database\database_complex_IQ_mb_noised_correction.h5'
 os.makedirs(os.path.dirname(load_path), exist_ok=True)
-
-simu_path = r'C:\Benoit\deep_learning\field_simu\2024-06-26_10blocks_1scats_no_noise'
 BfStruct = scipy.io.loadmat(os.path.join(simu_path, 'BfStruct.mat'))['BfStruct']
 
 # BfStruct = BfStruct['BfStruct']
@@ -174,30 +170,29 @@ print('Shape of y test = ', yTest.shape)
 
 img_depth = norm_IQ_mb_noised.shape[1]
 img_width = norm_IQ_mb_noised.shape[2]
-sizeConv2D = 3
+sizeConv2D = 15
 activationConv2D = 'relu'
 sizeMaxPool = 2
 dropoutValue = 0.5
 activationDenseLayer = 'sigmoid'
 Loss = 'mse'
 Optimizer = 'Adam'
-Epoch = 10 
+Epoch = 5000 
 learningRate = 1e-3
 batchSize = 20
 crossVal = 'KFold'
 nKFold = 2
 
 save_folder = dir_path + r'\results\test_simu_1bulle\cnn_prediction\IQ_mb_no_noise\adding_gaussian_noise_5_per_correction'
-save_subfolder1 = r'\quickTest\sizeConv2D_{}'.format(sizeConv2D)+'_{}'.format(sizeConv2D)
-save_subfolder2 = r'\runGPU_{}'.format(bool(infoSys[0]))
-save_subfolder3 = r'\cross_val_{}'.format(crossVal) + '_{}'.format(nKFold) 
-save_subfolder4 = r'\epoch_{}'.format(Epoch)
+save_subfolder1 = r'\sizeConv2D_{}'.format(sizeConv2D)+'_{}'.format(sizeConv2D)
+save_subfolder2 = r'\cross_val_{}'.format(crossVal) + '_{}'.format(nKFold) 
+save_subfolder3 = r'\epoch_{}'.format(Epoch)
 # save_subfolder5 = r'\nKFold_{}'.format(nKFold)
 # save_subfolder5 = r'\dropout_afterSecondMaxPooling'
 
 
 # Combine the parent folder path with the subfolder name to create the full path
-create_subfolder = os.path.join(save_folder + save_subfolder1 + save_subfolder2 + save_subfolder3 + save_subfolder4)
+create_subfolder = os.path.join(save_folder + save_subfolder1 + save_subfolder2 + save_subfolder3)
 
 # Create the subfolder
 os.makedirs(create_subfolder, exist_ok=True)
