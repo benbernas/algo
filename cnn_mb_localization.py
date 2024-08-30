@@ -32,7 +32,8 @@ import pickle
 
 #%% define pre-param
 
-dir_path = r'D:\Benoit\machine_learning\python\deep_learning'
+#dir_path = r'D:\Benoit\machine_learning\python\deep_learning'
+dir_path = r'C:\Benoit\deep_learning'
 os.chdir(dir_path)
 simu_path = dir_path + r'\field_simu\2024-06-26_10blocks_1scats_no_noise'
 save_fig = 1
@@ -100,7 +101,9 @@ infoSys = check_environment()
 #%% load database
     
 # D:\Benoit\machine_learning\python\deep_learning\algo\generate_database\database
-load_path = dir_path + r'\algo\generate_database\database\database_complex_IQ_mb_noised_correction.h5'
+load_path = dir_path + r'\algo\generate_database\database\database_IQ_mb_noised_sizeSubImg_50_50.h5'
+
+# load_path = r'C:\Benoit\deep_learning\algo\generate_database\database\database_complex_IQ_mb_noised_correction.h5'
 os.makedirs(os.path.dirname(load_path), exist_ok=True)
 BfStruct = scipy.io.loadmat(os.path.join(simu_path, 'BfStruct.mat'))['BfStruct']
 
@@ -112,8 +115,24 @@ dx = float(BfStruct['dx']);
 nframes = float(BfStruct['nframes']);
     
 with h5py.File(load_path, 'r') as file:
+    
     norm_IQ_mb_noised = file["norm_IQ_mb_noised"][:,:,:]
-    mb_coord = file["simu_mb_coord"][:,:]
+
+    # special research into all strings files to know if there is a sub-img or not in the loaded database
+    list_key = list(file.keys())[:]
+    search_text = 'sub_img_norm_IQ_mb_shuffled'
+    found_string = None
+    for key in list_key:
+        if search_text in key:
+            found_string = key
+            subimages = file["sub_img_norm_IQ_mb_shuffled"][:,:,:]
+            break
+
+        else:
+            subimages = 'None'
+            # norm_IQ_mb_shuffled = file["norm_IQ_mb_shuffled"][:,:,:]
+            
+    coord_mb_shuffled = file["coord_mb_shuffled"][:,:]
     IQ_train = file["IQ_train"][:,:,:]
     coord_train = file["coord_train"][:,:]
     # xTrain = file["xTrain"][:,:,:]
@@ -155,9 +174,12 @@ with h5py.File(load_path, 'r') as file:
 #     plt.show()
        
 #%% Show database
-
-print('Shape of X database = ', norm_IQ_mb_noised.shape)
-print('Shape of Y database = ', mb_coord.shape)
+if subimages == 'None':
+    print('Shape of X database = ', norm_IQ_mb_noised.shape)
+else:
+    print('Shape of X database = ', subimages.shape)
+# print('Shape of X database (sub images) = ', subimages.shape)
+print('Shape of Y database = ', coord_mb_shuffled.shape)
 print('Shape of IQ Train = ', IQ_train.shape)
 print('Shape of coord Train" = ', coord_train.shape)
 # print('Shape of IQ test = ', IQ_test.shape)
@@ -168,31 +190,43 @@ print('Shape of coord Train" = ', coord_train.shape)
 print('Shape of x test = ', xTest.shape)
 print('Shape of y test = ', yTest.shape)
 
-img_depth = norm_IQ_mb_noised.shape[1]
-img_width = norm_IQ_mb_noised.shape[2]
-sizeConv2D = 15
+img_depth = norm_IQ_mb_noised.shape[0]
+img_width = norm_IQ_mb_noised.shape[1]
+if subimages == 'None':
+    sub_img_depth = 'None'
+    sub_img_width = 'None'
+else:
+    sub_img_depth = subimages.shape[1]
+    sub_img_width = subimages.shape[2]
+sizeConv2D = 3
 activationConv2D = 'relu'
 sizeMaxPool = 2
 dropoutValue = 0.5
 activationDenseLayer = 'sigmoid'
 Loss = 'mse'
 Optimizer = 'Adam'
-Epoch = 5000 
+Epoch = 20
 learningRate = 1e-3
 batchSize = 20
 crossVal = 'KFold'
 nKFold = 2
+nMB = 1 # MB number simulated
 
-save_folder = dir_path + r'\results\test_simu_1bulle\cnn_prediction\IQ_mb_no_noise\adding_gaussian_noise_5_per_correction'
+save_folder = dir_path + r'\results\test_simu_1bulle\cnn_prediction\IQ_mb_no_noise\adding_gaussian_noise_5_per_correction\quickTest'
+if subimages == 'None':
+    save_subfolder0 = r'\size_images_{}'.format(img_depth)+'_{}'.format(img_width)
+    
+else:
+    save_subfolder0 = r'\size_subimages_{}'.format(sub_img_depth)+'_{}'.format(sub_img_width)
 save_subfolder1 = r'\sizeConv2D_{}'.format(sizeConv2D)+'_{}'.format(sizeConv2D)
 save_subfolder2 = r'\cross_val_{}'.format(crossVal) + '_{}'.format(nKFold) 
 save_subfolder3 = r'\epoch_{}'.format(Epoch)
 # save_subfolder5 = r'\nKFold_{}'.format(nKFold)
-# save_subfolder5 = r'\dropout_afterSecondMaxPooling'
+save_subfolder4 = r'\dropout_afterFlatten_test_no_sub'
 
 
 # Combine the parent folder path with the subfolder name to create the full path
-create_subfolder = os.path.join(save_folder + save_subfolder1 + save_subfolder2 + save_subfolder3)
+create_subfolder = os.path.join(save_folder + save_subfolder0 + save_subfolder1 + save_subfolder2 + save_subfolder3 +save_subfolder4)
 
 # Create the subfolder
 os.makedirs(create_subfolder, exist_ok=True)
@@ -208,8 +242,8 @@ def create_model(input_shape):
         MaxPooling2D((sizeMaxPool, sizeMaxPool)),
         Conv2D(32, (sizeConv2D, sizeConv2D), activation=activationConv2D),
         MaxPooling2D((sizeMaxPool, sizeMaxPool)),
-        Dropout(dropoutValue),
         Flatten(),
+        Dropout(dropoutValue),
         Dense(64, activation=activationDenseLayer),
         Dense(2)  # Output layer to obtain [z, x] coordinates
         ])
@@ -244,7 +278,12 @@ for train_index, val_index in kf.split(IQ_train):
     yTrain, yVal = coord_train[train_index], coord_train[val_index]
 
     # Create and train the model
-    model = create_model((img_depth, img_width, 1))
+    if subimages == 'None':
+        model = create_model((img_depth, img_width, 1))
+    else:
+        model = create_model((sub_img_depth, sub_img_width, 1))
+        
+    
     history = model.fit(xTrain, yTrain, epochs=Epoch, batch_size=batchSize, validation_data=(xVal, yVal), verbose=1)
     # print(history.history['loss'])
     # print(history.history['loss'])
@@ -255,7 +294,10 @@ for train_index, val_index in kf.split(IQ_train):
     
     
     # test and performance 
-    y_pred_coord = model.predict(xTest[:,:,:].reshape(len(xTest), img_depth, img_width, 1))
+    if subimages == 'None':
+        y_pred_coord = model.predict(xTest[:,:,:].reshape(len(xTest), img_depth, img_width, 1))
+    else:
+        y_pred_coord = model.predict(xTest[:,:,:].reshape(len(xTest), sub_img_depth, sub_img_width, 1))
     all_fold_y_pred_coord.append(y_pred_coord)
     
     #calculate the distance [x,z] between true and predicted coordinates
@@ -361,8 +403,8 @@ plt.legend(loc='upper right')
 
 
 bins_test=int((np.max(yTest[:,0]) - np.min(yTest[:,0]))*10)
-fc = 15.6; #MHz
 c0 = BfStruct['c0'].astype(float) 
+fc = 15.6; #MHz 
 lambda_radius = c0/fc # mm
 
 x_bins = len(np.arange(np.min(yTest[:,0]), np.max(yTest[:,0])+2*lambda_radius, lambda_radius))
@@ -480,8 +522,8 @@ save_model = 1
 if save_model == 1:
     # Save variables to a file
     dump({'IQ': norm_IQ_mb_noised,
-          'mb_coord': mb_coord,
-
+          'sub_IQ': subimages,
+          'mb_coord': coord_mb_shuffled,
           'IQ_train': IQ_train,
           'mb_coord_train': coord_train, 
           'IQ_test': xTest,
@@ -500,6 +542,8 @@ if save_model == 1:
     
     dump({'img_depth': img_depth,
           'img_width': img_width,
+          'sub_img_depth': sub_img_depth,
+          'sub_img_width': sub_img_width,
           'sizeConv2D': sizeConv2D,
           'activationConv2D': activationConv2D,
           'sizeMaxPool': sizeMaxPool,
