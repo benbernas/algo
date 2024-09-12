@@ -18,11 +18,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import random
 import time
-from sklearn.metrics import root_mean_squared_error, accuracy_score
+from sklearn.metrics import root_mean_squared_error, accuracy_score, mean_squared_error
 
 
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, Reshape
 import tensorflow as tf
 
 from sklearn.model_selection import KFold, StratifiedKFold
@@ -35,9 +35,13 @@ import pickle
 #dir_path = r'D:\Benoit\machine_learning\python\deep_learning'
 dir_path = r'C:\Benoit\deep_learning'
 os.chdir(dir_path)
-simu_path = dir_path + r'\field_simu\2024-06-26_10blocks_1scats_no_noise'
+simu_path = dir_path + r'\field_simu\2024-08-23_10blocks_5scats_no_noise'
 save_fig = 1
 
+#path database
+# D:\Benoit\machine_learning\python\deep_learning\algo\generate_database\database
+load_path = dir_path + r'\algo\generate_database\database\database_IQ_mb_noised_sizeImg_91_128_mb_5.h5'
+# load_path = r'C:\Benoit\deep_learning\algo\generate_database\database\database_complex_IQ_mb_noised_correction.h5'
 #%% check if you are running the code on GPU or running on CPU
 def check_environment():
     # Check Python version
@@ -100,10 +104,6 @@ infoSys = check_environment()
 # print(runOnGPU) 
 #%% load database
     
-# D:\Benoit\machine_learning\python\deep_learning\algo\generate_database\database
-load_path = dir_path + r'\algo\generate_database\database\database_IQ_mb_noised_sizeSubImg_50_50.h5'
-
-# load_path = r'C:\Benoit\deep_learning\algo\generate_database\database\database_complex_IQ_mb_noised_correction.h5'
 os.makedirs(os.path.dirname(load_path), exist_ok=True)
 BfStruct = scipy.io.loadmat(os.path.join(simu_path, 'BfStruct.mat'))['BfStruct']
 
@@ -205,12 +205,12 @@ dropoutValue = 0.5
 activationDenseLayer = 'sigmoid'
 Loss = 'mse'
 Optimizer = 'Adam'
-Epoch = 20
+Epoch = 5000
 learningRate = 1e-3
 batchSize = 20
 crossVal = 'KFold'
-nKFold = 2
-nMB = 1 # MB number simulated
+nKFold = 5
+nMB = 5 # MB number simulated
 
 save_folder = dir_path + r'\results\test_simu_1bulle\cnn_prediction\IQ_mb_no_noise\adding_gaussian_noise_5_per_correction\quickTest'
 if subimages == 'None':
@@ -222,7 +222,7 @@ save_subfolder1 = r'\sizeConv2D_{}'.format(sizeConv2D)+'_{}'.format(sizeConv2D)
 save_subfolder2 = r'\cross_val_{}'.format(crossVal) + '_{}'.format(nKFold) 
 save_subfolder3 = r'\epoch_{}'.format(Epoch)
 # save_subfolder5 = r'\nKFold_{}'.format(nKFold)
-save_subfolder4 = r'\dropout_afterFlatten_test_no_sub'
+save_subfolder4 = r'\dropout_afterFlatten_test2_5mb'
 
 
 # Combine the parent folder path with the subfolder name to create the full path
@@ -235,8 +235,24 @@ print(f"Subfolder '{save_subfolder1}' and  '{save_subfolder2}' created in '{crea
 
 
 #%%
-# Define model 
-def create_model(input_shape):
+# Define model for 1 
+# def create_model(input_shape):
+#     cnn = Sequential([
+#         Conv2D(16, (sizeConv2D, sizeConv2D), activation=activationConv2D, input_shape=input_shape),
+#         MaxPooling2D((sizeMaxPool, sizeMaxPool)),
+#         Conv2D(32, (sizeConv2D, sizeConv2D), activation=activationConv2D),
+#         MaxPooling2D((sizeMaxPool, sizeMaxPool)),
+#         Flatten(),
+#         Dropout(dropoutValue),
+#         Dense(64, activation=activationDenseLayer),
+#         Dense(2)  # Output layer to obtain [z, x] coordinates
+#         ])
+#     opt = tf.keras.optimizers.Adam(learning_rate=learningRate)
+#     cnn.compile(loss=Loss, optimizer=opt, metrics=['accuracy', 'mse'])
+#     return cnn
+
+
+def create_model(input_shape, nMB):
     cnn = Sequential([
         Conv2D(16, (sizeConv2D, sizeConv2D), activation=activationConv2D, input_shape=input_shape),
         MaxPooling2D((sizeMaxPool, sizeMaxPool)),
@@ -245,11 +261,13 @@ def create_model(input_shape):
         Flatten(),
         Dropout(dropoutValue),
         Dense(64, activation=activationDenseLayer),
-        Dense(2)  # Output layer to obtain [z, x] coordinates
+        Dense(10),  # Output layer to obtain [z, x] coordinates
+        Reshape((nMB,2))
         ])
     opt = tf.keras.optimizers.Adam(learning_rate=learningRate)
     cnn.compile(loss=Loss, optimizer=opt, metrics=['accuracy', 'mse'])
     return cnn
+
 
 
 # Set the number of folds
@@ -276,12 +294,16 @@ start_time = time.time()
 for train_index, val_index in kf.split(IQ_train):
     xTrain, xVal = IQ_train[train_index], IQ_train[val_index]
     yTrain, yVal = coord_train[train_index], coord_train[val_index]
-
+    
+    # yTrain = yTrain.reshape(-1, nMB, 2)
+    # yVal = yVal.reshape(-1, nMB, 2)
+    
+    
     # Create and train the model
     if subimages == 'None':
-        model = create_model((img_depth, img_width, 1))
+        model = create_model((img_depth, img_width, 1), nMB)
     else:
-        model = create_model((sub_img_depth, sub_img_width, 1))
+        model = create_model((sub_img_depth, sub_img_width, 1), nMB)
         
     
     history = model.fit(xTrain, yTrain, epochs=Epoch, batch_size=batchSize, validation_data=(xVal, yVal), verbose=1)
@@ -301,8 +323,8 @@ for train_index, val_index in kf.split(IQ_train):
     all_fold_y_pred_coord.append(y_pred_coord)
     
     #calculate the distance [x,z] between true and predicted coordinates
-    dist_x_true_pred = yTest[:,0] - y_pred_coord[:,0]
-    dist_z_true_pred = yTest[:,1] - y_pred_coord[:,1]
+    dist_x_true_pred = yTest[:,:,0] - y_pred_coord[:,:,0]
+    dist_z_true_pred = yTest[:,:,1] - y_pred_coord[:,:,1]
     abs_dist_true_pred = np.sqrt(dist_x_true_pred**2 + dist_z_true_pred**2)
     
     all_fold_dist_x_true_pred.append(dist_x_true_pred)
@@ -312,9 +334,9 @@ for train_index, val_index in kf.split(IQ_train):
     
     # error in prediction --> root mean square error (RMSE)
     # yTest = our y_true 
-    RMSE_pred  = np.sqrt(np.mean((yTest[:,:] - y_pred_coord[:,:])**2))
-    RMSE_pred_x  = np.sqrt(np.mean((yTest[:,0] - y_pred_coord[:,0])**2))
-    RMSE_pred_z  = np.sqrt(np.mean((yTest[:,1] - y_pred_coord[:,1])**2))
+    RMSE_pred  = np.sqrt(np.mean((yTest[:,:,:] - y_pred_coord[:,:,:])**2))
+    RMSE_pred_x  = np.sqrt(np.mean((yTest[:,:,0] - y_pred_coord[:,:,0])**2))
+    RMSE_pred_z  = np.sqrt(np.mean((yTest[:,:,1] - y_pred_coord[:,:,1])**2))
     RMSE = [RMSE_pred, RMSE_pred_x, RMSE_pred_z]
     all_fold_rmse.append(RMSE)
     
@@ -324,7 +346,10 @@ for train_index, val_index in kf.split(IQ_train):
     
 end_time = time.time()
 model.summary()
-
+#%% check RMSE with module sklearn
+# Calculer le RMSE pour cette fold
+rmse = np.sqrt(mean_squared_error(yTest.flatten(), y_pred_coord.flatten()))
+print(f"Fold RMSE: {rmse}")
 #%%
 # Loss
 fig1, ax = plt.subplots()
@@ -390,51 +415,58 @@ print(' -> RMSE over z between true position and predicted position of MBs = ', 
 
 # distribution x coord
 fig3 = plt.figure()
-plt.hist(yTrain[:,0], bins=int((np.max(yTrain[:,0]) - np.min(yTrain[:,0]))*10), color='blue', edgecolor='black', label = 'x coordinates of trained images')
-# plt.legend('')
-plt.xlabel('x (mm)')
-plt.legend(loc='upper right')
+for i in range(nMB):   
+    plt.hist(yTrain[:,i,0], bins=int((np.max(yTrain[:,i,0]) - np.min(yTrain[:,i,0]))*10), edgecolor='black', label = 'x coordinates of trained images')
+    # plt.legend('')
+    plt.xlabel('x (mm)')
+    plt.legend(loc='upper right')
 
 # distribution z coord
 fig4 = plt.figure()
-plt.hist(yTrain[:,1], bins=int((np.max(yTrain[:,1]) - np.min(yTrain[:,1]))*10), color='red', edgecolor='black', label = 'z coordinates of trained images')
-plt.xlabel('z (mm)')
-plt.legend(loc='upper right')
+for i in range(nMB):  
+    plt.hist(yTrain[:,i,1], bins=int((np.max(yTrain[:,i,1]) - np.min(yTrain[:,i,1]))*10), color='red', edgecolor='black', label = 'z coordinates of trained images')
+    plt.xlabel('z (mm)')
+    plt.legend(loc='upper right')
 
+
+#plot prediction
 
 bins_test=int((np.max(yTest[:,0]) - np.min(yTest[:,0]))*10)
 c0 = BfStruct['c0'].astype(float) 
 fc = 15.6; #MHz 
 lambda_radius = c0/fc # mm
 
-x_bins = len(np.arange(np.min(yTest[:,0]), np.max(yTest[:,0])+2*lambda_radius, lambda_radius))
-z_bins = len(np.arange(np.min(yTest[:,1]), np.max(yTest[:,1])+2*lambda_radius, lambda_radius))
 
-counts_x, bins_coord_x = np.histogram(yTest[:,0], bins= x_bins)
-counts_z, bins_coord_z = np.histogram(yTest[:,1], bins= z_bins)
+for i in range(nMB):
+    x_bins = len(np.arange(np.min(yTest[:,i,0]), np.max(yTest[:,i,0])+2*lambda_radius, lambda_radius))
+    z_bins = len(np.arange(np.min(yTest[:,i,1]), np.max(yTest[:,i,1])+2*lambda_radius, lambda_radius))
 
-#plot histogram between x true coordinates and x predicted coordinates
-fig5 = plt.figure()
-plt.hist(yTest[:,0], bins=x_bins, color='green', edgecolor='black', alpha = 0.5, label = 'x true coordinates')
-plt.hist(y_pred_coord[:,0], bins=x_bins, color='red', edgecolor='black', alpha = 0.5, label = 'x predicted coordinates')
-plt.legend(loc='upper right')
-plt.xlabel('x (mm)')
-plt.ylabel('Nx coordinates')
+    counts_x, bins_coord_x = np.histogram(yTest[:,i,0], bins= x_bins)
+    counts_z, bins_coord_z = np.histogram(yTest[:,i,1], bins= z_bins)
+    
+    dist_x_true_pred = yTest[:,i,0] - y_pred_coord[:,i,0]
+    dist_z_true_pred = yTest[:,i,1] - y_pred_coord[:,i,1]
 
-
-#plot histogram between z true coordinates and z predicted coordinates
-fig6 = plt.figure()
-plt.hist(yTest[:,1], bins=z_bins, color='green', edgecolor='black', alpha = 0.5, label = 'z true coordinates')
-plt.hist(y_pred_coord[:,1], bins=z_bins, color='red', edgecolor='black', alpha = 0.5, label = 'z predicted coordinates')
-plt.legend(loc='upper right')
-plt.xlabel('z (mm)')
-plt.ylabel('Nz coordinates')
+fig5 = plt.figure()    
+for i in range(nMB):
+    #plot histogram between x true coordinates and x predicted coordinates
+    plt.hist(yTest[:,i,0], bins=x_bins, edgecolor='black', alpha = 0.5, label = 'x true coordinates')
+    plt.hist(y_pred_coord[:,i,0], bins=x_bins, edgecolor='black', alpha = 0.5, label = 'x predicted coordinates')
+    plt.legend(loc='upper right')
+    plt.xlabel('x (mm)')
+    plt.ylabel('Nx coordinates')
+    
+# fig6 = plt.figure()   
+for i in range(nMB):    
+    #plot histogram between z true coordinates and z predicted coordinates
+    fig6, ax = plt.subplots(2,2,i)
+    plt.hist(yTest[:,i,1], bins=z_bins, edgecolor='black', alpha = 0.5, label = 'z true coordinates')
+    plt.hist(y_pred_coord[:,i,1], bins=z_bins, edgecolor='black', alpha = 0.5, label = 'z predicted coordinates')
+    plt.legend(loc='upper right')
+    plt.xlabel('z (mm)')
+    plt.ylabel('Nz coordinates')
 
 #plot histogram of the distance between z true coordinates and z predicted coordinates
-
-dist_x_true_pred = yTest[:,0] - y_pred_coord[:,0]
-dist_z_true_pred = yTest[:,1] - y_pred_coord[:,1]
-
 dist_true_pred = np.sqrt(dist_x_true_pred**2 + dist_z_true_pred**2)
 dist_true_pred_test = np.mean(dist_true_pred)
 
