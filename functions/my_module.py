@@ -9,7 +9,7 @@ Created on Mon Jul 29 14:13:50 2024
 --> function to extract a sub-image from an original size of a frames (img)
 
 """
-import matplotlib as plt
+import matplotlib.pyplot as plt
 import numpy as np
 import random
 
@@ -117,19 +117,65 @@ def convert_mm_to_pixel(coord_mm, extent, resolution):
     
     return (z_px, x_px)
 
-def check_data(image, coord, extent=None):
-    if extent is None:
-        extent = None
+def check_data(image, coord, myextent, resolution):
+    if myextent is None:
+        myextent = None
     else:
-        z_extent, x_extent = extent
+        [z_extent, x_extent] = myextent
+        [dz, dx] = resolution
     
-    plt.imshow(image, extent)
-    plt.scatter(coord[0, 0], coord[1, 1], marker = '+', c='red')
+    plt.figure()
+    plt.imshow(image, extent=[x_extent[0]-dx/2, x_extent[1]+dx/2, z_extent[1]+dz/2, z_extent[0]-dz/2])
+    plt.scatter(coord[:,0], coord[:,1], marker = '+', c='red')
     plt.pause(0.1)
-
-    plt.imshow(image)
-    # plt.scatter(simu_mb_coord[0, i], simu_mb_coord[1, i], marker = '+', c='red')
     plt.show()
-    
-    
 
+    
+from itertools import combinations
+
+# Fonction pour calculer les distances entre les points
+def calculate_distances_from_coords(coords):
+    nMB = coords.shape[0]  # Nombre de points
+    distances = []
+    
+    for (i, j) in combinations(range(nMB), 2):
+        x_i, z_i = coords[i]
+        x_j, z_j = coords[j]
+        distance = np.sqrt((x_j - x_i)**2 + (z_j - z_i)**2)
+        distances.append(distance)
+    
+    # Retourne les distances sous forme d'un tableau
+    return np.array(distances)
+
+# Fonction pour générer les labels de distances
+def generate_distance_labels(coord_labels):
+    distance_labels = []
+    
+    for coords in coord_labels:
+        distances = calculate_distances_from_coords(coords)
+        distances_sorted = np.sort(distances)  # Trier par ordre croissant
+        distance_labels.append(distances_sorted)
+    
+    return np.array(distance_labels)
+
+
+# import tensorflow as tf
+
+# Custom loss function
+# def custom_loss(y_true, y_pred):
+#     # Split y_true and y_pred into bounding box coordinates and class probabilities
+#     y_true_coords, y_true_probs = tf.split(y_true, [4, num_classes], axis=-1)
+#     y_pred_coords, y_pred_probs = tf.split(y_pred, [4, num_classes], axis=-1)
+    
+#     # Calculate mean squared error (MSE) for bounding box coordinates
+#     mse_coords = tf.losses.mean_squared_error(y_true_coords, y_pred_coords)
+    
+#     # Calculate binary cross-entropy for class probabilities (if applicable)
+#     if num_classes > 0:
+#         bce_probs = tf.losses.binary_crossentropy(y_true_probs, y_pred_probs)
+#         # You may need to adjust the weights for the two loss components to balance their contributions
+#         total_loss = mse_coords + bce_probs
+#     else:
+#         total_loss = mse_coords
+    
+#     return total_loss
