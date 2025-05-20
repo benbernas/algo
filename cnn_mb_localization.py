@@ -2,11 +2,12 @@
 """
 Created on Sun Jul  7 18:58:43 2024
 
-@author: labo
+@author: Benoît Bernas
+
+Main code to run deep learning model for the detection and the localization of MBs 
 """
 
-### CNN model for detection and localization of MBs 
-# Clean algorithm of "test_cnn_coord"
+#import libraries
 
 import sys
 import os
@@ -16,90 +17,40 @@ import h5py
 
 import matplotlib.pyplot as plt
 import numpy as np
-import random
+
 import time
-from sklearn.metrics import root_mean_squared_error, accuracy_score, mean_squared_error
 
-
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, Reshape
 import tensorflow as tf
 
 from sklearn.model_selection import KFold, StratifiedKFold
-from sklearn.metrics import root_mean_squared_error, accuracy_score
 
-import pickle
+
+
+
+from joblib import dump
 
 #%% define pre-param
 
-#dir_path = r'D:\Benoit\machine_learning\python\deep_learning'
-dir_path = r'C:\Benoit\deep_learning'
+#% define pre-param
+
+dir_path = r'D:\Benoit\deep_learning_for_ulm'
+# dir_path = r'C:\Benoit\deep_learning'
 os.chdir(dir_path)
-simu_path = dir_path + r'\field_simu\2024-08-23_10blocks_5scats_no_noise'
+# simu_path = dir_path + r'\matlab\field_simu\realistic_database\2025-05-06_10blocks_5scats\simu_test_noise'
+simu_path = dir_path + r'\matlab\field_simu\simple_database\2024-08-23_10blocks_5scats_no_noise'
 save_fig = 1
 
 #path database
 # D:\Benoit\machine_learning\python\deep_learning\algo\generate_database\database
-load_path = dir_path + r'\algo\generate_database\database\database_IQ_mb_noised_sizeImg_91_128_mb_5.h5'
-# load_path = r'C:\Benoit\deep_learning\algo\generate_database\database\database_complex_IQ_mb_noised_correction.h5'
+# load_path = dir_path + r'\python\datasets\5mb\realistic_dataset\dataset_IQ_svd_sizeImg_121_128_5mb_10blocks.h5'
+load_path = dir_path + r'\python\datasets\5mb\simple_dataset\dataset_IQ_mb_noise_5per_sizeImg_91_128_5mb_10blocks.h5'
+# D:\Benoit\deep_learning_for_ulm\python\GitHub\algo
+#path containing functions 
+function_path = dir_path + r'\python\GitHub\algo\functions'
+# Add the directory to sys.path
+sys.path.append(function_path)
+from my_module import check_environment
 #%% check if you are running the code on GPU or running on CPU
-def check_environment():
-    # Check Python version
-    python_version = sys.version_info
-    is_python_310 = python_version.major == 3 and python_version.minor == 10
-
-    # Check if the environment is 'myenv'
-    # This assumes that 'myenv' is part of the PATH environment variable
-    is_myenv = 'myenv' in sys.prefix
-
-    # Check if GPU is available
-    num_gpus = len(tf.config.list_physical_devices('GPU'))
-
-    if is_python_310 and is_myenv:
-        if num_gpus > 0:
-            python = sys.version[:7]
-            tensorFlow = tf.__version__
-            cuda = 11.2
-            cuDNN = 8.1
-            run_GPU = 1
-            print(f"Running on Python {python} in 'myenv' Anaconda environment with GPU support.")
-            print(f"TensorFlow version: {tensorFlow}")
-            print(f"CUDA version: {cuda}")
-            print(f"cuDNN version: {cuDNN}")
-            print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
-            
-
-        else:
-            python = 3.10
-            tensorFlow = tf.__version__
-            cuda = 'not running on GPU'
-            cuDNN = cuda
-            run_GPU = 0
-            print(f"Running on Python {python} in 'myenv' Anaconda environment without GPU support.")
-            print(f"TensorFlow version: {tensorFlow}")
-            print(f"CUDA version: {cuda}")
-            print(f"cuDNN version: {cuDNN}")
-            print("Num GPUs Available:", len(tf.config.list_physical_devices('GPU')))
-            
-
-            
-    else:
-        python = sys.version[:7]
-        tensorFlow = tf.__version__
-        cuda = 'not running on GPU'
-        cuDNN = cuda
-        run_GPU = 0
-        print(f"Running on Python {python}, not in 'myenv' Anaconda environment. Not using the GPU.")
-        print(f"TensorFlow version: {tensorFlow}")
-        print(f"CUDA version: {cuda}")
-        print(f"cuDNN version: {cuDNN}")
-        print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
-        
-    
-        
-    return run_GPU, python, tensorFlow, cuda, cuDNN 
-
-#check run on GPU or not 
 infoSys = check_environment()
 # print(runOnGPU) 
 #%% load database
@@ -113,10 +64,18 @@ zExtent = float(BfStruct['z0']), float(BfStruct['z1']);
 dz = float(BfStruct['dz']);
 dx = float(BfStruct['dx']);
 nframes = float(BfStruct['nframes']);
+
+# is_dataset = 'realistic' #realistic or simple
+is_dataset = 'simple' #realistic or simple
     
 with h5py.File(load_path, 'r') as file:
     
-    norm_IQ_mb_noised = file["norm_IQ_mb_noised"][:,:,:]
+    # norm_IQ_mb_noised = file["norm_IQ_mb_noised"][:,:,:]
+    if is_dataset == 'realistic':
+        norm_IQ_mb_noised = file["norm_IQ_svd"][:]
+    elif is_dataset == 'simple':
+        norm_IQ_mb_noised = file["norm_IQ_mb_noised"][:]
+        norm_IQ_mb_noised = np.transpose(norm_IQ_mb_noised, (2,0,1))
 
     # special research into all strings files to know if there is a sub-img or not in the loaded database
     list_key = list(file.keys())[:]
@@ -125,53 +84,35 @@ with h5py.File(load_path, 'r') as file:
     for key in list_key:
         if search_text in key:
             found_string = key
-            subimages = file["sub_img_norm_IQ_mb_shuffled"][:,:,:]
+            subimages = file["sub_img_norm_IQ_mb_shuffled"][:]
             break
 
         else:
             subimages = 'None'
-            # norm_IQ_mb_shuffled = file["norm_IQ_mb_shuffled"][:,:,:]
-            
-    coord_mb_shuffled = file["coord_mb_shuffled"][:,:]
-    IQ_train = file["IQ_train"][:,:,:]
-    coord_train = file["coord_train"][:,:]
-    # xTrain = file["xTrain"][:,:,:]
-    # yTrain = file["yTrain"][:,:]
-    xTest = file["xTest"][:,:,:]
-    yTest = file["yTest"][:,:]
-    # xVal = file["xVal"][:,:,:]
-    # yVal = file["yVal"][:,:]
+            # norm_IQ_mb_shuffled = file["norm_IQ_mb_shuffled"][:,:,:]      
+    coord_mb_shuffled = file["coord_mb_shuffled"][:]
+    IQ_train = file["IQ_train"][:]
+    coord_train = file["coord_train"][:]
+    xTest = file["xTest"][:]
+    yTest = file["yTest"][:]
+    
 
+#%% not mandatory
 
-#%%  check xTrain and yTrain
-# faire fonction check xTrain yTrain
-# plt.figure()   
-# # for ii in range(1):     
-# for ii in range(200):
-    
-#     plt.imshow(xTrain[ii,:,:], extent=[xExtent[0]-dx/2, xExtent[1]+dx/2, zExtent[1]+dz/2, zExtent[0]-dz/2])
-#     # plt.imshow(xTrain[ii,:,:])
-    
-#     plt.scatter(yTrain[ii, 0], yTrain[ii, 1], marker = '+', c='red')
-#     # plt.hold(True)
-#     # plt.hold
-#     plt.pause(0.1)
-#     plt.show()
-    
-#%% check xTrain and yTrain after transposing and reshaping 
-#
-# plt.figure()   
-# # for ii in range(1):     
-# for ii in range(200):
-    
-#     plt.imshow(raw_IQ_mb[:,:,ii], extent=[xExtent[0]-dx/2, xExtent[1]+dx/2, zExtent[1]+dz/2, zExtent[0]-dz/2])
-#     # plt.imshow(xTrain[ii,:,:])
-    
-#     plt.scatter(yTrain[ii, 0], yTrain[ii, 1], marker = '+', c='red')
-#     # plt.hold(True)
-#     # plt.hold
-#     plt.pause(0.1)
-#     plt.show()
+from preprocess_mb import clean_and_rank
+
+(IQ_train, coord_train_desc,
+ IQ_test,  coord_test_desc,
+ infos_train, infos_test) = clean_and_rank(
+        train_IQ=IQ_train,
+        train_coord_mm=coord_train,
+        test_IQ=xTest,
+        test_coord_mm=yTest,
+        zExtent=zExtent, xExtent=xExtent,
+        dz=dz, dx=dx,
+        dist_threshold_px=0.105)
+
+# Désormais IQ_train / coord_train_desc nettoyés et triés
        
 #%% Show database
 if subimages == 'None':
@@ -182,93 +123,53 @@ else:
 print('Shape of Y database = ', coord_mb_shuffled.shape)
 print('Shape of IQ Train = ', IQ_train.shape)
 print('Shape of coord Train" = ', coord_train.shape)
-# print('Shape of IQ test = ', IQ_test.shape)
-# print('Shape of x train = ', xTrain.shape)
-# print('Shape of y train = ', yTrain.shape)
-# print('Shape of x validation = ', xVal.shape)
-# print('Shape of y validation = ', yVal.shape)
 print('Shape of x test = ', xTest.shape)
 print('Shape of y test = ', yTest.shape)
 
-img_depth = norm_IQ_mb_noised.shape[0]
-img_width = norm_IQ_mb_noised.shape[1]
-if subimages == 'None':
-    sub_img_depth = 'None'
-    sub_img_width = 'None'
-else:
-    sub_img_depth = subimages.shape[1]
-    sub_img_width = subimages.shape[2]
+img_depth = norm_IQ_mb_noised.shape[1]
+img_width = norm_IQ_mb_noised.shape[2]
 sizeConv2D = 3
 activationConv2D = 'relu'
 sizeMaxPool = 2
-dropoutValue = 0.5
+dropoutValue = 0
 activationDenseLayer = 'sigmoid'
-Loss = 'mse'
+# Loss = 'hugarian_matching_loss' 
+Loss = 'optimal_matching_loss' 
 Optimizer = 'Adam'
-Epoch = 5000
-learningRate = 1e-3
-batchSize = 20
+Epoch = 2
+learningRate = 1e-4
+batchSize = 64
 crossVal = 'KFold'
-nKFold = 5
-nMB = 5 # MB number simulated
+nKFold = 2
+nMB = yTest.shape[2] # MB number simulated
+nblocks = 10
+save_model = 1 
+pixel_size = (dx+dz)/2
 
-save_folder = dir_path + r'\results\test_simu_1bulle\cnn_prediction\IQ_mb_no_noise\adding_gaussian_noise_5_per_correction\quickTest'
-if subimages == 'None':
-    save_subfolder0 = r'\size_images_{}'.format(img_depth)+'_{}'.format(img_width)
-    
-else:
-    save_subfolder0 = r'\size_subimages_{}'.format(sub_img_depth)+'_{}'.format(sub_img_width)
-save_subfolder1 = r'\sizeConv2D_{}'.format(sizeConv2D)+'_{}'.format(sizeConv2D)
+#%% save path folder 
+
+save_folder = dir_path + r'\python\results\test_simu_5mb\realistic_dataset\vggnet\classic_matching_loss\test'
+save_subfolder0 = r'\nblocks_{}'.format(nblocks)
+# save_subfolder1 = r'\sizeConv2D_{}'.format(sizeConv2D)+'_{}'.format(sizeConv2D)
 save_subfolder2 = r'\cross_val_{}'.format(crossVal) + '_{}'.format(nKFold) 
 save_subfolder3 = r'\epoch_{}'.format(Epoch)
-# save_subfolder5 = r'\nKFold_{}'.format(nKFold)
-save_subfolder4 = r'\dropout_afterFlatten_test2_5mb'
-
-
-# Combine the parent folder path with the subfolder name to create the full path
-create_subfolder = os.path.join(save_folder + save_subfolder0 + save_subfolder1 + save_subfolder2 + save_subfolder3 +save_subfolder4)
-
+# save_subfolder4 = r'\learning_rate_{}'.format(learningRate)
+save_subfolder5 =  r'\dropout_{}'.format(dropoutValue)
+create_subfolder = os.path.join(save_folder + save_subfolder0 + save_subfolder2 + save_subfolder3 + save_subfolder5)
+# create_subfolder = r'D:\Benoit\machine_learning\python\deep_learning\results\test_simu_5mb\cnn_prediction\IQ_mb_no_noise\adding_gaussian_noise_5per\quick_test\hugarian\add_lr_callback_l2_regularizer_0.0001'
 # Create the subfolder
 os.makedirs(create_subfolder, exist_ok=True)
 
-print(f"Subfolder '{save_subfolder1}' and  '{save_subfolder2}' created in '{create_subfolder}'")
+#%%  import my functions
 
+from custom_loss import matching_mb, optimal_matching_loss, euclidean_distance_loss_hungarian, set_matching_params
+from visualize_callback import build_callbacks
+from tensorflow.keras.callbacks import EarlyStopping
+from my_models import get_model
+from localization_evaluation import global_rmse, plot_rmse_and_density_map
 
-#%%
-# Define model for 1 
-# def create_model(input_shape):
-#     cnn = Sequential([
-#         Conv2D(16, (sizeConv2D, sizeConv2D), activation=activationConv2D, input_shape=input_shape),
-#         MaxPooling2D((sizeMaxPool, sizeMaxPool)),
-#         Conv2D(32, (sizeConv2D, sizeConv2D), activation=activationConv2D),
-#         MaxPooling2D((sizeMaxPool, sizeMaxPool)),
-#         Flatten(),
-#         Dropout(dropoutValue),
-#         Dense(64, activation=activationDenseLayer),
-#         Dense(2)  # Output layer to obtain [z, x] coordinates
-#         ])
-#     opt = tf.keras.optimizers.Adam(learning_rate=learningRate)
-#     cnn.compile(loss=Loss, optimizer=opt, metrics=['accuracy', 'mse'])
-#     return cnn
-
-
-def create_model(input_shape, nMB):
-    cnn = Sequential([
-        Conv2D(16, (sizeConv2D, sizeConv2D), activation=activationConv2D, input_shape=input_shape),
-        MaxPooling2D((sizeMaxPool, sizeMaxPool)),
-        Conv2D(32, (sizeConv2D, sizeConv2D), activation=activationConv2D),
-        MaxPooling2D((sizeMaxPool, sizeMaxPool)),
-        Flatten(),
-        Dropout(dropoutValue),
-        Dense(64, activation=activationDenseLayer),
-        Dense(10),  # Output layer to obtain [z, x] coordinates
-        Reshape((nMB,2))
-        ])
-    opt = tf.keras.optimizers.Adam(learning_rate=learningRate)
-    cnn.compile(loss=Loss, optimizer=opt, metrics=['accuracy', 'mse'])
-    return cnn
-
-
+# set constant paramater zExtent, xExtent, nMB
+set_matching_params(zExtent, xExtent, nMB)
 
 # Set the number of folds
 k = nKFold 
@@ -278,294 +179,138 @@ kf = KFold(n_splits=k, shuffle=True)
 # This cross-validation object is a variation of KFold that returns stratified folds. The folds are made by preserving the percentage of samples for each class.
 # yData_stratified = np.floor(coord_train[:, 0]/0.1).astype(int)
 
-
-# Lists to store the results
-all_fold_val_scores = []
 all_fold_train_histories = []
 all_fold_y_pred_coord = []
-all_fold_dist_x_true_pred = []
-all_fold_dist_z_true_pred = []
-all_fold_abs_dist_true_pred = []
 all_fold_rmse = []
-
+n_k = 0
 
 start_time = time.time()
 # Perform K-fold cross-validation
 for train_index, val_index in kf.split(IQ_train):
     xTrain, xVal = IQ_train[train_index], IQ_train[val_index]
-    yTrain, yVal = coord_train[train_index], coord_train[val_index]
+    yTrain, yVal = coord_train_desc[train_index], coord_train_desc[val_index]
+    # yTrain, yVal = coord_train[train_index], coord_train[val_index]
+     
+    # reinitialization of K-Fold
+    tf.keras.backend.clear_session()
+
     
-    # yTrain = yTrain.reshape(-1, nMB, 2)
-    # yVal = yVal.reshape(-1, nMB, 2)
+
+
+    # paramètres communs
+    input_shape = (img_depth, img_width, 1)
+
+    # # Exemple 1 : CNN simple avec régularisation L2 et loss « optimal »
+    # model = get_model("cnn",
+    #                   input_shape=input_shape,
+    #                   nMB=nMB,
+    #                   learning_rate=1e-4,
+    #                   l2_lambda=1e-4,
+    #                   loss_name="optimal")
+
+    # Exemple 2 : VGG‑net avec loss « hungarian »
+    model = get_model("vgg",
+                      input_shape=input_shape,
+                      nMB=nMB,
+                      learning_rate=1e-4,
+                      loss_name="optimal")  #"optimal" or "hugarian" matching method
     
+    n_k = n_k+1
+    # set callbacks (add loss history live visuzalization + matching MBs saving + early stopping)
+    mycallbacks = build_callbacks(xVal, yVal,
+                                matching_mb_func=matching_mb,
+                                viz_dir= create_subfolder + r'\grid_viz{}'.format(n_k),
+                                max_samples=9,
+                                patience=10)
+
     
-    # Create and train the model
-    if subimages == 'None':
-        model = create_model((img_depth, img_width, 1), nMB)
-    else:
-        model = create_model((sub_img_depth, sub_img_width, 1), nMB)
-        
-    
-    history = model.fit(xTrain, yTrain, epochs=Epoch, batch_size=batchSize, validation_data=(xVal, yVal), verbose=1)
-    # print(history.history['loss'])
-    # print(history.history['loss'])
+    history = model.fit(xTrain, yTrain, epochs=Epoch, batch_size=batchSize, validation_data=(xVal, yVal), verbose=1, callbacks=mycallbacks)
    
     # Evaluate the model on the validation data
     val_scores = model.evaluate(xVal, yVal, verbose=1)
-    all_fold_val_scores.append(val_scores)
     
+    ##### testing
     
-    # test and performance 
-    if subimages == 'None':
-        y_pred_coord = model.predict(xTest[:,:,:].reshape(len(xTest), img_depth, img_width, 1))
-    else:
-        y_pred_coord = model.predict(xTest[:,:,:].reshape(len(xTest), sub_img_depth, sub_img_width, 1))
-    all_fold_y_pred_coord.append(y_pred_coord)
+    # test and performance --> compute prediction 
+    y_pred_coord = model.predict(xTest[:,:,:].reshape(len(xTest), img_depth, img_width, 1))
     
-    #calculate the distance [x,z] between true and predicted coordinates
-    dist_x_true_pred = yTest[:,:,0] - y_pred_coord[:,:,0]
-    dist_z_true_pred = yTest[:,:,1] - y_pred_coord[:,:,1]
-    abs_dist_true_pred = np.sqrt(dist_x_true_pred**2 + dist_z_true_pred**2)
-    
-    all_fold_dist_x_true_pred.append(dist_x_true_pred)
-    all_fold_dist_z_true_pred.append(dist_z_true_pred)
-    all_fold_abs_dist_true_pred.append(abs_dist_true_pred)
+    #% Evaluate the deep learning model on test set 
+    # error in prediction --> root mean square error (RMSE)     
+    rmse_results = global_rmse(yTest, y_pred_coord, nMB)
+    # inputs = def global_rmse(true_coords, loc_coords, nMB)
+    # outputs = rmse, e_x, e_z
 
-    
-    # error in prediction --> root mean square error (RMSE)
-    # yTest = our y_true 
-    RMSE_pred  = np.sqrt(np.mean((yTest[:,:,:] - y_pred_coord[:,:,:])**2))
-    RMSE_pred_x  = np.sqrt(np.mean((yTest[:,:,0] - y_pred_coord[:,:,0])**2))
-    RMSE_pred_z  = np.sqrt(np.mean((yTest[:,:,1] - y_pred_coord[:,:,1])**2))
-    RMSE = [RMSE_pred, RMSE_pred_x, RMSE_pred_z]
-    all_fold_rmse.append(RMSE)
-    
-
-    # Save the training history for further analysis (optional)
     all_fold_train_histories.append(history.history)
+    all_fold_y_pred_coord.append(y_pred_coord)
+    all_fold_rmse.append(rmse_results)
+
     
-end_time = time.time()
+end_time = time.time() 
 model.summary()
-#%% check RMSE with module sklearn
-# Calculer le RMSE pour cette fold
-rmse = np.sqrt(mean_squared_error(yTest.flatten(), y_pred_coord.flatten()))
-print(f"Fold RMSE: {rmse}")
-#%%
-# Loss
-fig1, ax = plt.subplots()
-ax.plot(history.history['loss'], label='loss')
-ax.plot(history.history['val_loss'], label='val loss')
-ax.set_xlabel('Epoch')
-ax.legend()
-# Accuracy
-fig2, ax = plt.subplots()
-ax.plot(history.history['accuracy'], label='accuracy')
-ax.set_xlabel('Epoch')
-# fig, ax = plt.subplots()
-# ax.plot(history.history['ROC'], label='ROC')
-# plt.plot(history.history['loss'])
-# plt.plot(history.history['val_loss'])
-ax.legend()
 
-#%%
-### PREDICTION ###
-# faire fonction check prediction
-## check 1 prediction
-# idx_test = random.randint(0, xTest.shape[0])
-# IQ_mb_test = xTest[idx_test,:,:]
-# true_coord = yTest[idx_test,:]
-
-# predicted_coordinates = model.predict(IQ_mb_test.reshape(1, img_depth, img_width, 1))
-# fig, ax = plt.subplots()
-# ax.imshow(IQ_mb_test, extent=[xExtent[0]-dx/2, xExtent[1]+dx/2, zExtent[1]+dz/2, zExtent[0]-dz/2])
-# # ax.imshow(IQ_mb_test, extent=[xExtent[0], xExtent[1], zExtent[1], zExtent[0]])
-# ax.scatter(predicted_coordinates[0,0],predicted_coordinates[0,1], marker = '+', c='red', label = 'Localization of the MB predicted by the DL model')
-# ax.scatter(true_coord[0], true_coord[1], marker = '+', c='green', label = 'True localization of the MB')
-# ax.set_title('1 MB simulated. Frame sent for prediction')
-# ax.set_xlabel('x (mm)')
-# ax.set_ylabel('z (mm)')
-# ax.legend(loc='lower right')
-# dist_true_pred_plot = np.sqrt((true_coord[0] - predicted_coordinates[0,0])**2 + (true_coord[1] - predicted_coordinates[0,1])**2)
-# print(dist_true_pred_plot)
-# ax.show()
-
-
-#%% show results
 # Calculate elapsed time of the model 
 elapsed_time = (end_time - start_time)/60 #elapsed time of model (min)
-
-## Calculate mean and standard deviation
-# validation scores
-avg_val_score = np.mean(all_fold_val_scores, axis=0)
-std_val_score = np.std(all_fold_val_scores, axis=0)
-# rmse 
-avg_rmse = np.mean(all_fold_rmse, axis=0)
-std_rmse = np.std(all_fold_rmse, axis=0)
-
-
-print(f"Elapsed time for training: {elapsed_time:.2f} min")
-pixel_size = (dx+dz)/2
-print('Pixel size = ',  "{:.3f}".format(pixel_size), 'mm') 
-print(f'[mean, std] over {k} folds:')
-print(f' -> validation scores = [{avg_val_score[:2]}, {std_val_score[:2]}]')
-print(' -> RMSE between true position and predicted position of MBs = ', "[{:.3f}, ".format(avg_rmse[0]), "{:.3f}]".format(std_rmse[0]), 'mm')
-print(' -> RMSE over x between true position and predicted position of MBs = ', "[{:.3f}, ".format(avg_rmse[1]), "{:.3f}]".format(std_rmse[1]), 'mm')
-print(' -> RMSE over z between true position and predicted position of MBs = ', "[{:.3f}, ".format(avg_rmse[2]), "{:.3f}]".format(std_rmse[2]), 'mm')
-#%% Show figs
-
-# distribution x coord
-fig3 = plt.figure()
-for i in range(nMB):   
-    plt.hist(yTrain[:,i,0], bins=int((np.max(yTrain[:,i,0]) - np.min(yTrain[:,i,0]))*10), edgecolor='black', label = 'x coordinates of trained images')
-    # plt.legend('')
-    plt.xlabel('x (mm)')
-    plt.legend(loc='upper right')
-
-# distribution z coord
-fig4 = plt.figure()
-for i in range(nMB):  
-    plt.hist(yTrain[:,i,1], bins=int((np.max(yTrain[:,i,1]) - np.min(yTrain[:,i,1]))*10), color='red', edgecolor='black', label = 'z coordinates of trained images')
-    plt.xlabel('z (mm)')
-    plt.legend(loc='upper right')
-
-
-#plot prediction
-
-bins_test=int((np.max(yTest[:,0]) - np.min(yTest[:,0]))*10)
-c0 = BfStruct['c0'].astype(float) 
-fc = 15.6; #MHz 
-lambda_radius = c0/fc # mm
-
-
-for i in range(nMB):
-    x_bins = len(np.arange(np.min(yTest[:,i,0]), np.max(yTest[:,i,0])+2*lambda_radius, lambda_radius))
-    z_bins = len(np.arange(np.min(yTest[:,i,1]), np.max(yTest[:,i,1])+2*lambda_radius, lambda_radius))
-
-    counts_x, bins_coord_x = np.histogram(yTest[:,i,0], bins= x_bins)
-    counts_z, bins_coord_z = np.histogram(yTest[:,i,1], bins= z_bins)
+print(elapsed_time)
     
-    dist_x_true_pred = yTest[:,i,0] - y_pred_coord[:,i,0]
-    dist_z_true_pred = yTest[:,i,1] - y_pred_coord[:,i,1]
+#%% Plot all train and validation functions for each cross-validation  
+n_subplots = nKFold   # Nombre de subplots souhaité
+if n_subplots == 5:
+    n_rows = 2
+    n_cols = 3
+elif n_subplots == 2:
+    n_rows = 1
+    n_cols = 2
 
-fig5 = plt.figure()    
-for i in range(nMB):
-    #plot histogram between x true coordinates and x predicted coordinates
-    plt.hist(yTest[:,i,0], bins=x_bins, edgecolor='black', alpha = 0.5, label = 'x true coordinates')
-    plt.hist(y_pred_coord[:,i,0], bins=x_bins, edgecolor='black', alpha = 0.5, label = 'x predicted coordinates')
-    plt.legend(loc='upper right')
-    plt.xlabel('x (mm)')
-    plt.ylabel('Nx coordinates')
-    
-# fig6 = plt.figure()   
-for i in range(nMB):    
-    #plot histogram between z true coordinates and z predicted coordinates
-    fig6, ax = plt.subplots(2,2,i)
-    plt.hist(yTest[:,i,1], bins=z_bins, edgecolor='black', alpha = 0.5, label = 'z true coordinates')
-    plt.hist(y_pred_coord[:,i,1], bins=z_bins, edgecolor='black', alpha = 0.5, label = 'z predicted coordinates')
-    plt.legend(loc='upper right')
-    plt.xlabel('z (mm)')
-    plt.ylabel('Nz coordinates')
+fig, ax = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(12, 6))
+ax = ax.flatten()  # Transforme en liste à 1D pour itérer facilement
 
-#plot histogram of the distance between z true coordinates and z predicted coordinates
-dist_true_pred = np.sqrt(dist_x_true_pred**2 + dist_z_true_pred**2)
-dist_true_pred_test = np.mean(dist_true_pred)
+for n in range(n_subplots):
+    min_loss = min(all_fold_train_histories[n]['loss'])
+    last_loss = all_fold_train_histories[n]['loss'][-1]
+    min_val_loss = min(all_fold_train_histories[n]['val_loss'])
+    last_val_loss = all_fold_train_histories[n]['val_loss'][-1]
 
-# dist_true_pred_abs =  np.sqrt(np.mean(np.abs(dist_x_true_pred**2) + np.abs(dist_z_true_pred**2)))
+    ax[n].plot(all_fold_train_histories[n]['loss'], label='loss; min = {:.3f}'.format(min_loss))
+    ax[n].plot(all_fold_train_histories[n]['val_loss'], label='val loss; min = {:.3f}'.format(min_val_loss))
+    ax[n].set_xlabel('Epoch')
+    ax[n].set_xlim(0, Epoch)
+    ax[n].grid(True)
+    ax[n].legend()
 
-fig7 = plt.figure()
-plt.hist(dist_x_true_pred, bins=x_bins, color='orange', edgecolor='black', alpha = 0.5, label = 'distance between x true and x predicted coordinates')
-plt.legend(loc='upper right')
-plt.xlabel('distance x (mm)')
-plt.ylabel('Nx distances')
+# Supprimer le dernier subplot inutilisé (le 6e)
+if n_subplots < len(ax):
+    fig.delaxes(ax[-1])  # Supprime l’axe 6 inutile
 
-fig8 = plt.figure()
-plt.hist(dist_z_true_pred, bins=x_bins, color='blue', edgecolor='black', alpha = 0.5, label = 'distance between z true and z predicted coordinates')
-plt.legend(loc='upper right')
-plt.xlabel('distance z (mm)')
-plt.ylabel('Nz distances')
-
-
-fig9 = plt.figure()
-plt.hist(dist_true_pred, bins=x_bins, color='red', edgecolor='black', alpha = 0.5, label = 'distance between true coordinates and predicted coordinates')
-plt.legend(loc='upper right')
-plt.xlabel('distance (mm)')
-plt.ylabel('Nzx distances')
-
-#%% save figs 
-if save_fig == 1:
-    
-    savefig_path = r'\fig'
-    create_figSubfolder = os.path.join(create_subfolder + savefig_path)
-    # Create the subfolder
-    os.makedirs(create_figSubfolder, exist_ok=True)
-    print(f"figures saved in '{create_figSubfolder}'")
-    
-    savefig_name = r'\loss'
-    file = open(create_figSubfolder + savefig_name + ".mpl", 'wb')
-    pickle.dump(fig1, file)
-    
-    
-    savefig_name = r'\accuracy'
-    file = open(create_figSubfolder + savefig_name + ".mpl", 'wb')
-    pickle.dump(fig2, file)
-    
-    savefig_name = r'\distribution_xcoord'
-    file = open(create_figSubfolder + savefig_name + ".mpl", 'wb')
-    pickle.dump(fig3, file)
-    
-    savefig_name = r'\distribution_zcoord'
-    file = open(create_figSubfolder + savefig_name + ".mpl", 'wb')
-    pickle.dump(fig4, file)
-    
-    savefig_name = r'\distribution_xcoord_true_pred'
-    file = open(create_figSubfolder + savefig_name + ".mpl", 'wb')
-    pickle.dump(fig5, file)
-    
-    savefig_name = r'\distribution_zcoord_true_pred'
-    file = open(create_figSubfolder + savefig_name + ".mpl", 'wb')
-    pickle.dump(fig6, file)
-    
-    savefig_name = r'\distance_xcoord_true_pred'
-    file = open(create_figSubfolder + savefig_name + ".mpl", 'wb')
-    pickle.dump(fig7, file)
-    
-    savefig_name = r'\distance_zcoord_true_pred'
-    file = open(create_figSubfolder + savefig_name + ".mpl", 'wb')
-    pickle.dump(fig8, file)
-    
-    savefig_name = r'\abs_distance_xzcoord_true_pred'
-    file = open(create_figSubfolder + savefig_name + ".mpl", 'wb')
-    pickle.dump(fig9, file)
-elif save_fig == 0:
-    print('no fig saved')
-#%%
-
-file_path = r'D:\Benoit\machine_learning\python\deep_learning\results\test_simu_1bulle\cnn_prediction\IQ_mb_no_noise\adding_gaussian_noise_5_per_correction\sizeConv2D_3_3\runGPU_False\cross_val_KFold_2\epoch_5000\dropout_afterSecondMaxPooling\fig'
-
-if os.path.exists(file_path):
-    print(f"The file exists: {file_path}")
-else:
-    print(f"The file does not exist: {file_path}")
+plt.tight_layout()
+plt.show()
+plt.savefig(create_subfolder + "\loss.png")
 
 #%% save model and data
-from joblib import dump, load
-save_model = 1 
 
 if save_model == 1:
+    # save_folder = dir_path + r'\results\test_simu_5mb\cnn_prediction\IQ_mb_no_noise\adding_gaussian_noise_5per\hugarian_matching_loss_with_contrainst'
+
+    
     # Save variables to a file
     dump({'IQ': norm_IQ_mb_noised,
           'sub_IQ': subimages,
           'mb_coord': coord_mb_shuffled,
           'IQ_train': IQ_train,
           'mb_coord_train': coord_train, 
+          'infos_intensities_train': infos_train,
+          'mb_coord_train_descend': coord_train_desc,
           'IQ_test': xTest,
           'mb_coord_test': yTest,
-          
+          'infos_intensities_test': infos_test,
+          'mb_coord_test_descend': coord_test_desc,
           'xTrain': xTrain,
           'yTrain': yTrain,
           'xVal': xVal,
           'yVal': yVal,
           'BfStruct': BfStruct,
+          'nblocks_train': nblocks,
+          'nMB_train' : nMB, # MB number simulated
+          'simu_path': simu_path, 
           'dataset_path': load_path
           }, create_subfolder + r'\training_dataset.joblib')
     
@@ -574,8 +319,8 @@ if save_model == 1:
     
     dump({'img_depth': img_depth,
           'img_width': img_width,
-          'sub_img_depth': sub_img_depth,
-          'sub_img_width': sub_img_width,
+          # 'sub_img_depth': sub_img_depth,
+          # 'sub_img_width': sub_img_width,
           'sizeConv2D': sizeConv2D,
           'activationConv2D': activationConv2D,
           'sizeMaxPool': sizeMaxPool,
@@ -597,60 +342,67 @@ if save_model == 1:
     
     dump({'elapsed_time': elapsed_time,
           'all_fold_train_histories': all_fold_train_histories, 
-          'all_fold_val_scores': all_fold_val_scores,
-          'avg_val_score': avg_val_score,
-          'std_val_score': std_val_score,
           'all_fold_y_pred_coord': all_fold_y_pred_coord,
-          'all_fold_dist_x_true_pred': all_fold_dist_x_true_pred,
-          'all_fold_dist_z_true_pred':all_fold_dist_z_true_pred,
-          'all_fold_abs_dist_true_pred':all_fold_abs_dist_true_pred,
           'pixel_size': pixel_size,
           'all_fold_rmse': all_fold_rmse,
-          'avg_rmse_pred': avg_rmse,
-          'std_rmse_pred': std_rmse,
-          }, create_subfolder + r'\training_and_evaluation_results.joblib')
+          # 'all_fold_mean_rmse': mean_rmse_tot,
+          # 'all_fold_mean_std': std_rmse_tot,
+          
+          }, create_subfolder + r'\results.joblib')
 elif save_model == 0:
-    print('no saving model')
-    
-    
-    # for future plot : 
-    #dist_x_true_pred = yTest[:,0] - all_fold_y_pred_coord[:,0]
-    #dist_z_true_pred = yTest[:,1] - all_fold_y_pred_coord[:,1]
+    print('no saving param / training / result model')
 
-#%% load figs
-load_fig = 0
-if load_fig == 1: 
-    load_folder = dir_path + r'\results\epoch_1000'
-    load_subfolder = r'\fig'
-    file = open(load_folder + load_subfolder + r'\loss.mpl', 'rb')
-    figure = pickle.load(file)
-    figure.show()
-    
-    file = open(load_folder + load_subfolder  + r'\abs_distance_xzcoord_true_pred.mpl', 'rb')
-    figure = pickle.load(file)
-    figure.show()
-elif load_fig == 0:
-    print('no need to load figures')
 
-    
-#%% load data
-import numpy as np
-from joblib import dump, load
-from sklearn.metrics import root_mean_squared_error, accuracy_score
-import tensorflow as tf
-reload_data = 0
-if reload_data == 1:
-    load_result_path = r'D:\Benoit\machine_learning\python\deep_learning\old\test_simu_1bulle\cnn_prediction\long_test\IQ_mb_no_noise\adding_gaussian_noise_5_per_correction\sizeConv2D_3_3\cross_val_KFold\epoch_1000'
-    # load_model = tf.keras.models.load_model(load_result_path + r'\model.keras')
-    # load_model.summary()
-    
-    param_model = load(load_result_path + r'\model_param.joblib')
-    # gpuState = param_model['runOnGPU']
-    # nKFold = param_model['nKFold']
-    eval_result = load(load_result_path + r'\training_and_evaluation_results.joblib')
-    # elaps_time = eval_result['elapsed_time']
-elif reload_data == 0:
-    print('no reload data')
+#%% Run this part if you want to analyze and plot data and results, directly after the training of the model
+quick_check = 1
 
-#%% load model
-# load_model = tf.keras.models.load_model(create_subfolder + r'\model.keras')
+if quick_check == 1:
+    
+    #------------------------------------------------------------------
+    # Quick check of the dataset 
+    #------------------------------------------------------------------
+    from visualize_data import plot_data_and_loc
+    
+    """ choose between those (str) : 
+        "train_several_frames", "train_movie_frames", 
+        "val_several_frames", "val_movie_frames", 
+        "test_several_frames", "test_movie_frames",
+        "check_pwd"
+    """
+    
+    plot_data_and_loc(
+        iq_shuffled=norm_IQ_mb_noised, coord_mb_shuffled=coord_mb_shuffled, 
+        xTrain=xTrain, yTrain=yTrain,
+        xTest=xTest, yTest=yTest, y_pred_coord=y_pred_coord,
+        xVal=xVal, yVal=yVal,
+        xExtent=xExtent, zExtent=zExtent, dx=dx, dz=dz,
+        display_modes=("train_several_frames"),
+        frame_wanted=[0, 26, 72, 134],
+        pause_duration=0.5,
+        n_frames=100
+    )
+    
+    #%% check histories (train ; val loss)
+    from visualize_callback import plot_histories
+    plot_histories(all_fold_train_histories, max_epoch=50)
+    
+    #%% Plot rmse evaluation 
+    """
+    inputs = def plot_rmse_and_density_map(loc_coords, rmse, train_coords, extent, resolution, 
+                                   num_bins_x=11, num_bins_z=10, 
+                                   c_lim_rmse=[0, 20], c_lim_num_mb=[0, 120], 
+                                   name_plot=None)         
+             """
+    plot_rmse_and_density_map(y_pred_coord, rmse_results["rmse_mb"], yTrain, nMB, [xExtent, zExtent], [dx ,dz])
+    
+    #% Make movie of the validation loss callback 
+    from visualize_callback import make_movie_epoch
+    make_movie_epoch(nKFold, create_subfolder)
+    
+elif quick_check == 0:
+    print('no quick check')
+        
+
+
+
+
