@@ -13,6 +13,96 @@ import matplotlib.pyplot as plt
 import numpy as np
 import random
 
+import tensorflow as tf
+
+import sys
+import os
+
+
+def check_environment():
+    # Check Python version
+    python_version = sys.version_info
+    is_python_310 = python_version.major == 3 and python_version.minor == 10
+
+    # Check if the environment is 'myenv'
+    # This assumes that 'myenv' is part of the PATH environment variable
+    is_myenv = 'myenv' in sys.prefix
+
+    # Check if GPU is available
+    num_gpus = len(tf.config.list_physical_devices('GPU'))
+
+    if is_python_310 and is_myenv:
+        if num_gpus > 0:
+            python = sys.version[:7]
+            tensorFlow = tf.__version__
+            cuda = 11.2
+            cuDNN = 8.1
+            run_GPU = 1
+            print(f"Running on Python {python} in 'myenv' Anaconda environment with GPU support.")
+            print(f"TensorFlow version: {tensorFlow}")
+            print(f"CUDA version: {cuda}")
+            print(f"cuDNN version: {cuDNN}")
+            print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+            
+
+        else:
+            python = 3.10
+            tensorFlow = tf.__version__
+            cuda = 'not running on GPU'
+            cuDNN = cuda
+            run_GPU = 0
+            print(f"Running on Python {python} in 'myenv' Anaconda environment without GPU support.")
+            print(f"TensorFlow version: {tensorFlow}")
+            print(f"CUDA version: {cuda}")
+            print(f"cuDNN version: {cuDNN}")
+            print("Num GPUs Available:", len(tf.config.list_physical_devices('GPU')))
+            
+
+            
+    else:
+        python = sys.version[:7]
+        tensorFlow = tf.__version__
+        cuda = 'not running on GPU'
+        cuDNN = cuda
+        run_GPU = 0
+        print(f"Running on Python {python}, not in 'myenv' Anaconda environment. Not using the GPU.")
+        print(f"TensorFlow version: {tensorFlow}")
+        print(f"CUDA version: {cuda}")
+        print(f"cuDNN version: {cuDNN}")
+        print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+        
+    
+        
+    return run_GPU, python, tensorFlow, cuda, cuDNN 
+
+def add_gaussian_noise(frames, noise_level):
+    # Créer un tableau vide pour les images bruitées, avec le même type que les frames
+    #noise level --> pourcentage du max d'intensité de la frame --> exemple 5% --> mettre 0.05 
+    
+    # noise_level in percentage; example noise_level = 0.05  # 
+    noised_img = np.empty(frames.shape, dtype=frames.dtype)
+
+    # Génération du bruit pour chaque image
+    for i in range(frames.shape[2]):
+        # Trouver le maximum absolu de l'image actuelle
+        max_value = np.max(np.abs(frames[:, :, i])) * np.random.uniform(0, noise_level)
+        
+        # Générer le bruit gaussien complexe
+        noise_real = np.random.normal(0, 1, frames[:, :, i].shape)
+        noise_imag = np.random.normal(0, 1, frames[:, :, i].shape)
+        complex_noise = noise_real + 1j * noise_imag  # Bruit gaussien complexe non limité
+        
+        
+        # Normaliser le bruit pour qu'il ne dépasse pas 5% du maximum de l'image
+        noise = complex_noise / np.max(np.abs(complex_noise)) * (max_value)
+        
+        # Ajouter le bruit à l'image brute
+        noised_img[:, :, i] = frames[:, :, i] + noise
+        
+
+    return noised_img
+
+
 def normalize_IQ_mb(frames):
     # norm_IQ = np.empty(frames.shape)
     # for i in range(frames.shape[2]):
@@ -22,15 +112,6 @@ def normalize_IQ_mb(frames):
     norm_IQ =  im_IQ / max_IQ
     return norm_IQ
 
-
-def gaussian_noise(frames):
-    # noise = np.empty(frames.shape)
-    noised_img = np.empty(frames.shape)
-    for i in range(frames.shape[2]):
-        mu, sigma = 0, np.max(frames[:,:,i])*0.05
-        noised_img[:,:,i] = np.random.normal(mu, sigma, frames[:,:,i].shape) 
-        # noised_img[:,:,i] = noise      
-    return noised_img, mu, sigma
 
 
 def extract_subimage_from_scatterer(image, coord_px, new_size_px, offset=None):
@@ -97,7 +178,7 @@ def calculate_new_extent(start_index, end_index, extent, resolution):
 
 
 
-def convert_mm_to_pixel(coord_mm, extent, resolution):
+def convert_mm_to_pixel(coord_mm, nMB, extent, resolution):
     """
     Convertir des coordonnées en mm en pixels.
     
@@ -117,16 +198,24 @@ def convert_mm_to_pixel(coord_mm, extent, resolution):
     
     return (z_px, x_px)
 
-def check_data(image, coord, myextent, resolution):
+
+
+def plot_data(image, coord, nMB, myextent, resolution):
     if myextent is None:
         myextent = None
     else:
         [z_extent, x_extent] = myextent
         [dz, dx] = resolution
     
-    plt.figure()
+    if nMB > 1 :
+        x_coord = coord[0, nMB]
+        z_coord = coord[1, nMB]
+    elif nMB == 1 :
+        x_coord = coord[0]
+        z_coord = coord[1]
+    
     plt.imshow(image, extent=[x_extent[0]-dx/2, x_extent[1]+dx/2, z_extent[1]+dz/2, z_extent[0]-dz/2])
-    plt.scatter(coord[:,0], coord[:,1], marker = '+', c='red')
+    plt.scatter(x_coord, z_coord, marker = '+', c='red')
     plt.pause(0.1)
     plt.show()
 
