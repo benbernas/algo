@@ -31,8 +31,6 @@ from joblib import dump
 
 #%% define pre-param
 
-#% define pre-param
-
 dir_path = r'D:\Benoit\deep_learning_for_ulm'
 # dir_path = r'C:\Benoit\deep_learning'
 os.chdir(dir_path)
@@ -136,7 +134,7 @@ activationDenseLayer = 'sigmoid'
 # Loss = 'hugarian_matching_loss' 
 Loss = 'optimal_matching_loss' 
 Optimizer = 'Adam'
-Epoch = 2
+Epoch = 500
 learningRate = 1e-4
 batchSize = 64
 crossVal = 'KFold'
