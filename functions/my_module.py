@@ -3,10 +3,41 @@
 Created on Mon Jul 29 14:13:50 2024
 
 @author: Benoît Bernas 
-'my_module' gathers all the functions useful and used for deep learning algos
+'my_module' gathers several functions useful and used for deep learning algos
 
 - extract_subimage_from_scatterer
 --> function to extract a sub-image from an original size of a frames (img)
+
+main ones: 
+- check_environment()
+    
+- add_gaussian_noise(frames, 
+                     noise_level)
+
+- normalize_IQ_mb(frames)
+
+
+- extract_subimage_from_scatterer(
+    image, 
+    coord_px, 
+    new_size_px, 
+    offset=None)
+
+
+optional ones: 
+- calculate_new_extent(start_index, 
+                       end_index, 
+                       extent, 
+                       resolution)
+
+- convert_mm_to_pixel(coord_mm, 
+                     nMB, 
+                     extent, 
+                     resolution)
+
+- calculate_distances_from_coords(coords)
+
+- generate_distance_labels(coord_labels)
 
 """
 import matplotlib.pyplot as plt
@@ -248,23 +279,3 @@ def generate_distance_labels(coord_labels):
     return np.array(distance_labels)
 
 
-# import tensorflow as tf
-
-# Custom loss function
-# def custom_loss(y_true, y_pred):
-#     # Split y_true and y_pred into bounding box coordinates and class probabilities
-#     y_true_coords, y_true_probs = tf.split(y_true, [4, num_classes], axis=-1)
-#     y_pred_coords, y_pred_probs = tf.split(y_pred, [4, num_classes], axis=-1)
-    
-#     # Calculate mean squared error (MSE) for bounding box coordinates
-#     mse_coords = tf.losses.mean_squared_error(y_true_coords, y_pred_coords)
-    
-#     # Calculate binary cross-entropy for class probabilities (if applicable)
-#     if num_classes > 0:
-#         bce_probs = tf.losses.binary_crossentropy(y_true_probs, y_pred_probs)
-#         # You may need to adjust the weights for the two loss components to balance their contributions
-#         total_loss = mse_coords + bce_probs
-#     else:
-#         total_loss = mse_coords
-    
-#     return total_loss
